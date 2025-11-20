@@ -1,86 +1,127 @@
-import requests
 import logging
 from django.conf import settings
+from elevenlabs import ElevenLabs
 
 logger = logging.getLogger(__name__)
 
 
 class ElevenLabsService:
-    """Service for interacting with Eleven Labs API for transcription"""
-    
-    BASE_URL = "https://api.elevenlabs.io/v1"
+    """Service for interacting with ElevenLabs API for speech-to-text transcription"""
     
     def __init__(self):
         self.api_key = settings.ELEVENLABS_API_KEY
         if not self.api_key:
             raise ValueError("ELEVENLABS_API_KEY not configured")
-    
-    def get_headers(self):
-        """Get headers for API requests"""
-        return {
-            "xi-api-key": self.api_key,
-        }
+        
+        # Initialize ElevenLabs client with API key
+        self.client = ElevenLabs(api_key=self.api_key)
     
     def transcribe_video(self, video_file_path):
         """
-        Transcribe a video file and return transcript with timestamps
+        Transcribe a video file using ElevenLabs Speech-to-Text API
         
         Args:
             video_file_path: Path to the video file
             
         Returns:
-            dict: Transcript data with timestamps
+            dict: Formatted transcript data with timestamps and metadata
         """
         try:
-            # Eleven Labs API endpoint for speech-to-text (dubbing/audio-intelligence)
-            # Note: This may require a specific plan or feature access
-            url = f"{self.BASE_URL}/audio-intelligence"
+            logger.info(f"Sending transcription request to ElevenLabs for {video_file_path}")
             
-            with open(video_file_path, 'rb') as f:
-                files = {
-                    'audio': f
-                }
-                headers = self.get_headers()
+            # Open the file and send to ElevenLabs API
+            with open(video_file_path, 'rb') as audio_file:
+                # Use the speech_to_text.convert method from the SDK
+                # Parameters:
+                # - file: the audio/video file
+                # - model_id: optional model selection
+                # - language_code: optional language hint
+                # - timestamps_granularity: 'word' for word-level timestamps
+                response = self.client.speech_to_text.convert(
+                    file=audio_file,
+                    timestamps_granularity='word'  # Get word-level timestamps
+                )
+            
+            logger.info("Transcription successful from ElevenLabs")
+            
+            # Format the response according to our internal structure
+            return self._format_transcript(response)
                 
-                logger.info(f"Sending transcription request to Eleven Labs for {video_file_path}")
-                response = requests.post(url, headers=headers, files=files, timeout=300)
-                response.raise_for_status()
-                
-                transcript_data = response.json()
-                logger.info("Transcription successful")
-                
-                return self._format_transcript(transcript_data)
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Eleven Labs API error: {str(e)}")
+        except Exception as e:
+            logger.error(f"ElevenLabs API error: {str(e)}")
             raise Exception(f"Failed to transcribe video: {str(e)}")
     
-    def _format_transcript(self, raw_data):
+    def _format_transcript(self, raw_response):
         """
-        Format the raw transcript data from Eleven Labs
+        Format the raw transcript data from ElevenLabs API
         
         Args:
-            raw_data: Raw response from Eleven Labs API
+            raw_response: Raw response from ElevenLabs speech_to_text.convert()
             
         Returns:
-            dict: Formatted transcript with timestamps
+            dict: Formatted transcript with timestamps and segments
+            
+        Expected ElevenLabs response structure:
+        {
+            "language_code": "en",
+            "language_probability": 0.99,
+            "text": "Full transcript text...",
+            "words": [
+                {
+                    "text": "word",
+                    "start": 0.5,
+                    "end": 0.8,
+                    "type": "word",
+                    "speaker_id": null
+                },
+                ...
+            ],
+            "transcription_id": "abc123"
+        }
         """
-        # Note: The actual format depends on Eleven Labs API response
-        # This is a placeholder structure that should be adjusted based on actual API response
-        
-        if 'text' in raw_data:
-            # Simple format
-            return {
-                'full_text': raw_data.get('text', ''),
-                'segments': raw_data.get('segments', []),
-                'metadata': {
-                    'duration': raw_data.get('duration', 0),
-                    'language': raw_data.get('language', 'en')
-                }
-            }
+        # Handle both dict and object responses
+        if hasattr(raw_response, '__dict__'):
+            data = raw_response.__dict__
         else:
-            # Return as-is if format is unknown
-            return raw_data
+            data = raw_response
+        
+        # Extract full text
+        full_text = data.get('text', '')
+        
+        # Extract words with timestamps
+        words = data.get('words', [])
+        
+        # Convert word objects to dicts if needed
+        formatted_words = []
+        for word in words:
+            if hasattr(word, '__dict__'):
+                word_dict = word.__dict__
+            else:
+                word_dict = word
+            
+            formatted_words.append({
+                'text': word_dict.get('text', ''),
+                'start': word_dict.get('start', 0),
+                'end': word_dict.get('end', 0),
+                'speaker_id': word_dict.get('speaker_id', None)
+            })
+        
+        # Calculate total duration from last word's end time
+        duration = 0.0
+        if formatted_words and formatted_words[-1]['end']:
+            duration = formatted_words[-1]['end']
+        
+        # Return formatted structure
+        return {
+            'full_text': full_text,
+            'words': formatted_words,
+            'metadata': {
+                'duration': duration,
+                'language': data.get('language_code', 'en'),
+                'language_probability': data.get('language_probability', 0),
+                'transcription_id': data.get('transcription_id', None)
+            }
+        }
     
     def get_transcript_duration(self, transcript_data):
         """
@@ -92,13 +133,14 @@ class ElevenLabsService:
         Returns:
             float: Duration in seconds
         """
+        # Try to get from metadata first
         if 'metadata' in transcript_data and 'duration' in transcript_data['metadata']:
             return transcript_data['metadata']['duration']
         
-        # Fallback: calculate from segments
-        if 'segments' in transcript_data and transcript_data['segments']:
-            last_segment = transcript_data['segments'][-1]
-            if 'end' in last_segment:
-                return last_segment['end']
+        # Fallback: calculate from words
+        if 'words' in transcript_data and transcript_data['words']:
+            last_word = transcript_data['words'][-1]
+            if 'end' in last_word and last_word['end']:
+                return last_word['end']
         
         return 0.0
