@@ -1,0 +1,27 @@
+{
+  "source_audio": "sample_audio_extended.mp3",
+  "timestamp": "2024-11-20T09:00:00",
+  "transcript": {
+    "full_text": "Welcome to the podcast. Today we're going to talk about artificial intelligence and its impact on society. This is a fascinating topic that has been getting a lot of attention lately. AI has the potential to revolutionize many industries and change the way we live and work. However, there are also concerns about job displacement and ethical considerations that we need to address. Let me tell you about something that happened last week. I was at a conference and someone demonstrated a new AI system that could write entire articles in seconds. It was impressive, but also terrifying. The quality was good enough that you couldn't really tell it was written by a machine. This raises serious questions about the future of creative work. Some people think AI will augment human creativity, making us more productive. Others worry it will replace us entirely. I think the truth is somewhere in the middle. We need to embrace these tools while also being mindful of their limitations and potential downsides. Education is going to be crucial. We need to teach the next generation how to work alongside AI, not compete with it. That means focusing on uniquely human skills like emotional intelligence, creativity, and critical thinking. These are things that machines still struggle with, despite all their advances.",
+    "words": [
+      {"text": "Welcome", "start": 0.0, "end": 0.5, "speaker_id": null},
+      {"text": "to", "start": 0.5, "end": 0.7, "speaker_id": null},
+      {"text": "the", "start": 0.7, "end": 0.9, "speaker_id": null},
+      {"text": "podcast.", "start": 0.9, "end": 1.4, "speaker_id": null},
+      {"text": "Today", "start": 1.8, "end": 2.1, "speaker_id": null},
+      {"text": "we're", "start": 2.1, "end": 2.3, "speaker_id": null},
+      {"text": "going", "start": 2.3, "end": 2.5, "speaker_id": null},
+      {"text": "to", "start": 2.5, "end": 2.6, "speaker_id": null},
+      {"text": "talk", "start": 2.6, "end": 2.9, "speaker_id": null},
+      {"text": "about", "start": 2.9, "end": 3.2, "speaker_id": null},
+      {"text": "artificial", "start": 3.2, "end": 3.9, "speaker_id": null},
+      {"text": "intelligence", "start": 3.9, "end": 180.0, "speaker_id": null}
+    ],
+    "metadata": {
+      "duration": 180.0,
+      "language": "en",
+      "language_probability": 0.99,
+      "transcription_id": "sample_transcript_extended_123"
+    }
+  }
+}

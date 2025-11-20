@@ -8,6 +8,7 @@ class VideoJob(models.Model):
     
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('preprocessing', 'Preprocessing'),
         ('transcribing', 'Transcribing'),
         ('analyzing', 'Analyzing'),
         ('clipping', 'Clipping'),
@@ -25,6 +26,14 @@ class VideoJob(models.Model):
     file_type = models.CharField(max_length=10, choices=FILE_TYPE_CHOICES, default='video')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     error_message = models.TextField(blank=True, null=True)
+    
+    # Preprocessing data
+    extracted_audio_path = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text='Path to extracted audio file (for video uploads)'
+    )
     
     # Transcript data
     transcript_json = models.JSONField(blank=True, null=True)

@@ -58,20 +58,31 @@ class LLMService:
     def _build_prompt(self, transcript_data, num_segments, min_duration, max_duration):
         """Build the prompt for LLM analysis"""
         
-        # Convert transcript data to a readable format
-        transcript_text = json.dumps(transcript_data, indent=2)
+        # Extract key information without sending full word array
+        # This reduces token count significantly for long transcripts
+        full_text = transcript_data.get('full_text', '')
+        duration = transcript_data.get('metadata', {}).get('duration', 0)
+        
+        # Create simplified representation
+        simplified_data = {
+            'full_text': full_text,
+            'total_duration_seconds': duration,
+            'total_duration_minutes': round(duration / 60, 2)
+        }
+        
+        transcript_text = json.dumps(simplified_data, indent=2)
         
         min_minutes = min_duration / 60
         max_minutes = max_duration / 60
         
-        prompt = f"""Review the attached transcript of a podcast with timestamps. 
+        prompt = f"""Review the attached transcript of a podcast. 
 
-Use the document to choose {num_segments} segments of dialogue that have the most interesting, provocative, and potentially viral content. 
+Use the transcript text to choose {num_segments} segments of dialogue that have the most interesting, provocative, and potentially viral content. 
 
 The segments should:
 - Be selected to have a mostly coherent topic and thought
 - Be between {min_minutes}-{max_minutes} minutes in length when spoken
-- Use the timestamps to determine the speaker's general speaking rate
+- Estimate timing based on typical speech rate (~150 words per minute)
 - Have high viral potential (controversial, insightful, emotional, or surprising)
 
 Return ONLY a valid JSON array with {num_segments} segments in the following format:
@@ -80,8 +91,8 @@ Return ONLY a valid JSON array with {num_segments} segments in the following for
     "title": "Concise headline for the segment",
     "description": "Brief overview of what is discussed",
     "reasoning": "Why this segment is provocative and potentially viral",
-    "start_time": <start_time_in_seconds>,
-    "end_time": <end_time_in_seconds>
+    "start_time": <estimated_start_time_in_seconds>,
+    "end_time": <estimated_end_time_in_seconds>
   }}
 ]
 
@@ -103,10 +114,16 @@ Remember: Return ONLY the JSON array, no additional text or explanation."""
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            response_format={"type": "json_object"} if "gpt-4" in self.model else None
+            response_format={"type": "json_object"} if "gpt" in self.model else None
         )
         
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        if content is None:
+            logger.error(f"OpenAI returned None content. Response: {response}")
+            logger.error(f"Finish reason: {response.choices[0].finish_reason}")
+            raise ValueError(f"OpenAI returned None content. Finish reason: {response.choices[0].finish_reason}")
+        
+        return content
     
     def _call_anthropic(self, prompt):
         """Call Anthropic API"""

@@ -1,0 +1,37 @@
+{
+  "timestamp": "2024-11-20T09:05:00",
+  "llm_provider": "openai",
+  "llm_model": "gpt-4",
+  "num_segments": 3,
+  "segments": [
+    {
+      "title": "AI's Revolutionary Potential",
+      "description": "Discussion of how AI can revolutionize industries and change work",
+      "reasoning": "This segment discusses transformation and change, which are inherently interesting and viral topics",
+      "start_time": 8.5,
+      "end_time": 78.5,
+      "duration": 70.0
+    },
+    {
+      "title": "Job Displacement Concerns",
+      "description": "Concerns about AI causing job displacement",
+      "reasoning": "Job security is a highly emotional and relatable topic that generates strong reactions",
+      "start_time": 82.0,
+      "end_time": 142.0,
+      "duration": 60.0
+    },
+    {
+      "title": "Ethical AI Considerations",
+      "description": "Discussion of ethical considerations in AI development",
+      "reasoning": "Ethics and AI is a controversial topic that sparks debate",
+      "start_time": 145.5,
+      "end_time": 215.5,
+      "duration": 70.0
+    }
+  ],
+  "transcript_metadata": {
+    "duration": 300.0,
+    "language": "en",
+    "language_probability": 0.99
+  }
+}

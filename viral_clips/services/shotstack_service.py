@@ -44,7 +44,7 @@ class ShotstackService:
             str: Render ID for tracking the clip creation
         """
         try:
-            url = f"{self.BASE_URL}/{self.stage}/render"
+            url = f"{self.BASE_URL}/edit/{self.stage}/render"
             
             # Calculate trim values
             trim_start = start_time
@@ -147,7 +147,7 @@ class ShotstackService:
             dict: Status information including URL when complete
         """
         try:
-            url = f"{self.BASE_URL}/{self.stage}/render/{render_id}"
+            url = f"{self.BASE_URL}/edit/{self.stage}/render/{render_id}"
             
             response = requests.get(url, headers=self.get_headers())
             response.raise_for_status()

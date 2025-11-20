@@ -4,10 +4,11 @@ Automate the creation of short-form viral clips from long-form content like podc
 
 ## Overview
 
-This tool uses a combination of APIs and AI models to:
-1. **Extract transcripts** with timestamps from video or audio files (Eleven Labs)
-2. **Analyze content** to identify the most viral, provocative segments (OpenAI/Claude)
-3. **Create clips** automatically based on identified segments (Shotstack)
+This tool uses a 4-stage pipeline with AI and automation:
+1. **Preprocess media** - Extract audio from video files (ffmpeg) or validate audio files
+2. **Extract transcripts** with word-level timestamps from audio (ElevenLabs)
+3. **Analyze content** to identify the most viral, provocative segments (OpenAI/Anthropic)
+4. **Create clips** automatically based on identified segments (Shotstack)
 
 ### 🎵 **NEW: Audio File Support!**
 Upload audio files directly (MP3, WAV, M4A, etc.) for faster processing and smaller file sizes. The tool will automatically create video clips with waveform visualizations. [Learn more](AUDIO_SUPPORT.md)
@@ -27,8 +28,18 @@ Upload audio files directly (MP3, WAV, M4A, etc.) for faster processing and smal
 ## Architecture
 
 ```
-Video Upload → Eleven Labs → Transcript → LLM Analysis → Viral Segments → Shotstack → Clips
+Upload (Video/Audio) → Stage 1: Preprocessing → Stage 2: Transcription → Stage 3: Analysis → Stage 4: Clipping
+                        (Audio Extract)    (ElevenLabs)        (Claude/GPT)      (Shotstack)
 ```
+
+### Pipeline Stages
+
+1. **Stage 1 - Preprocessing**: Extract audio from video files using ffmpeg (audio files pass through)
+2. **Stage 2 - Transcription**: Convert audio to text with word-level timestamps via ElevenLabs
+3. **Stage 3 - Segment Identification**: Use LLM to identify viral segments
+4. **Stage 4 - Clip Creation**: Generate video clips via Shotstack API
+
+Each stage can be tested independently. See [Testing Framework](#testing-framework).
 
 ## Installation
 
@@ -36,8 +47,18 @@ Video Upload → Eleven Labs → Transcript → LLM Analysis → Viral Segments 
 
 - **Python 3.11 or 3.12** (recommended)
   - ⚠️ **Python 3.13 has SSL issues on macOS** - see [PYTHON_VERSION_FIX.md](PYTHON_VERSION_FIX.md)
-- Redis (for Celery)
-- ffmpeg (for video processing)
+- **Redis** (for Celery background tasks)
+- **ffmpeg** (required for Stage 1 - audio extraction from video)
+  ```bash
+  # macOS
+  brew install ffmpeg
+  
+  # Ubuntu/Debian
+  sudo apt-get install ffmpeg
+  
+  # Verify installation
+  ffmpeg -version
+  ```
 
 ### Setup
 
@@ -68,8 +89,8 @@ cp .env.example .env
 Required API keys:
 - `ELEVENLABS_API_KEY` - Get from https://elevenlabs.io
 - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` - For LLM analysis
-- `SHOTSTACK_SANDBOX_API_KEY` - Get from https://shotstack.io (sandbox)
-- `SHOTSTACK_PRODUCTION_API_KEY` - Get from https://shotstack.io (production)
+  - **Recommended:** Anthropic Claude (better for content analysis)
+- `SHOTSTACK_API_KEY` - Get from https://shotstack.io
 - `SHOTSTACK_ENV` - Set to `sandbox` or `production` (default: sandbox)
 
 5. **Run migrations**
@@ -122,9 +143,20 @@ Response:
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "status": "pending",
+  "file_type": "video",
   "num_segments": 5,
   "created_at": "2024-01-01T12:00:00Z"
 }
+```
+
+**Job Status Values:**
+- `pending` - Job created, waiting to start
+- `preprocessing` - Extracting audio from video (Stage 1)
+- `transcribing` - Converting audio to text (Stage 2)
+- `analyzing` - Identifying viral segments (Stage 3)
+- `clipping` - Creating video clips (Stage 4)
+- `completed` - All clips ready
+- `failed` - Error occurred (check `error_message`)
 ```
 
 #### Check Job Status
@@ -251,8 +283,8 @@ SHOTSTACK_PRODUCTION_API_KEY=your-shotstack-production-api-key
 SHOTSTACK_ENV=sandbox
 
 # LLM Provider (openai or anthropic)
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4-turbo-preview
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-3-opus-20240229
 
 # Celery
 CELERY_BROKER_URL=redis://localhost:6379/0
@@ -264,15 +296,20 @@ MEDIA_ROOT=/tmp/viral_clips_media
 
 ### LLM Models
 
-**OpenAI Options:**
-- `gpt-4-turbo-preview` (recommended)
-- `gpt-4`
-- `gpt-3.5-turbo`
-
-**Anthropic Options:**
-- `claude-3-opus-20240229`
+**Anthropic (Recommended):**
+- `claude-3-opus-20240229` ✅ (best for content analysis, higher token limits)
 - `claude-3-sonnet-20240229`
 - `claude-3-haiku-20240307`
+
+**OpenAI:**
+- `gpt-4o` (latest model)
+- `gpt-4-turbo`
+- `gpt-4`
+
+**Note:** Anthropic Claude is recommended over OpenAI due to:
+- Higher token limits (200k vs 30k)
+- Better handling of long transcripts
+- Fewer content policy restrictions
 
 ## Project Structure
 
@@ -283,36 +320,60 @@ viral-clips/
 │   ├── urls.py
 │   └── celery.py
 ├── viral_clips/           # Main application
-│   ├── models.py          # Database models
+│   ├── models.py          # Database models (VideoJob, TranscriptSegment, ClippedVideo)
 │   ├── views.py           # API views
 │   ├── serializers.py     # REST serializers
-│   ├── tasks.py           # Celery tasks
-│   ├── services/          # External API integrations
-│   │   ├── elevenlabs_service.py
-│   │   ├── llm_service.py
-│   │   └── shotstack_service.py
+│   ├── tasks.py           # Celery tasks (4-stage pipeline)
+│   ├── services/          # External API integrations (4 stages)
+│   │   ├── preprocessing_service.py    # Stage 1: Audio extraction
+│   │   ├── elevenlabs_service.py       # Stage 2: Transcription
+│   │   ├── llm_service.py              # Stage 3: Segment analysis
+│   │   └── shotstack_service.py        # Stage 4: Clip creation
 │   └── management/        # CLI commands
 │       └── commands/
 │           ├── process_video.py
 │           └── check_job.py
+├── tests/                 # Testing framework (modular per stage)
+│   ├── test_stage1_preprocessing.py
+│   ├── test_stage2_transcription.py
+│   ├── test_stage3_segment_identification.py
+│   ├── test_stage4_clip_creation.py
+│   ├── test_runner.py     # Integrated pipeline testing
+│   └── fixtures/          # Sample test data
 ├── requirements.txt
-└── README.md
+├── README.md
+└── QUICKSTART.md
 ```
 
 ## Development Workflow
 
-1. **Video Upload**: User uploads a video via API or CLI
-2. **Transcription**: Eleven Labs extracts transcript with timestamps
-3. **Analysis**: LLM analyzes transcript to identify viral segments
-4. **Clipping**: Shotstack creates clips based on timestamps
-5. **Delivery**: Clips are available via API or downloadable
+1. **Upload**: User uploads video/audio via API or CLI (status: `pending`)
+2. **Preprocessing** (Stage 1): Extract audio from video using ffmpeg (status: `preprocessing`)
+   - Video files: Audio extracted to temporary file
+   - Audio files: Pass through without modification
+   - Output: Audio file path stored in `extracted_audio_path`
+3. **Transcription** (Stage 2): ElevenLabs extracts transcript with word-level timestamps (status: `transcribing`)
+   - Model: `scribe_v2`
+   - Processing time: ~2 minutes per minute of audio
+4. **Analysis** (Stage 3): LLM analyzes transcript to identify viral segments (status: `analyzing`)
+   - Provider: Anthropic Claude or OpenAI
+   - Processing time: ~15-30 seconds
+5. **Clipping** (Stage 4): Shotstack creates clips based on timestamps (status: `clipping`)
+   - Parallel processing for each segment
+   - Processing time: ~1-2 minutes per clip
+6. **Delivery**: Clips available via API (status: `completed`)
 
 ## Models
 
 ### VideoJob
-- Tracks overall processing status
-- Stores configuration (num_segments, duration limits)
-- Links to transcript and segments
+- Tracks overall processing status through all 4 stages
+- Stores configuration (num_segments, min_duration, max_duration)
+- Fields:
+  - `status`: Current stage (pending, preprocessing, transcribing, analyzing, clipping, completed, failed)
+  - `file_type`: 'video' or 'audio'
+  - `extracted_audio_path`: Path to extracted audio (for video files)
+  - `transcript_json`: Full transcript with word-level timestamps
+- Links to segments and clips
 
 ### TranscriptSegment
 - Identified viral segment
@@ -323,6 +384,54 @@ viral-clips/
 - Rendered video clip
 - Links to source segment
 - Stores video URL and status
+
+## Testing Framework
+
+The project includes a comprehensive testing framework for validating each stage independently or the complete pipeline.
+
+### Test Individual Stages
+
+```bash
+# Stage 1: Preprocessing (audio extraction)
+python tests/test_stage1_preprocessing.py /path/to/video.mp4
+
+# Stage 2: Transcription (ElevenLabs)
+python tests/test_stage2_transcription.py --from-stage1 test_outputs/stage1/preprocessing_result.json
+
+# Stage 3: Segment Identification (LLM)
+python tests/test_stage3_segment_identification.py --from-stage2 test_outputs/stage2/transcript.json
+
+# Stage 4: Clip Creation (Shotstack)
+python tests/test_stage4_clip_creation.py --from-stage3 test_outputs/stage3/segments.json
+```
+
+### Test Complete Pipeline
+
+```bash
+# Run all 4 stages end-to-end
+python tests/test_runner.py --input /path/to/video.mp4 --all-stages
+
+# Custom parameters
+python tests/test_runner.py --input podcast.mp3 --all-stages \
+  --num-segments 3 --min-duration 45 --max-duration 120
+```
+
+### Test with Sample Data
+
+```bash
+# Test without API calls using fixtures
+python tests/test_stage3_segment_identification.py tests/fixtures/sample_transcript.json
+```
+
+### Test Features
+
+- ✅ **Independent Stage Testing** - Test each stage in isolation
+- ✅ **Chained Testing** - Pass outputs between stages
+- ✅ **Sample Fixtures** - Test without hitting external APIs
+- ✅ **Validation** - Automatic structure and data validation
+- ✅ **Real Services** - Tests use actual production code (not mocks)
+
+See `tests/README.md` for detailed testing documentation.
 
 ## Production Considerations
 

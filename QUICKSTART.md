@@ -6,7 +6,15 @@ Get up and running with Viral Clips in 5 minutes.
 
 - **Python 3.11 or 3.12** (recommended)
   - ⚠️ Python 3.13 has SSL issues - see [PYTHON_VERSION_FIX.md](PYTHON_VERSION_FIX.md)
-- Redis installed
+- **Redis** installed and running
+- **ffmpeg** installed (required for video processing)
+  ```bash
+  # macOS
+  brew install ffmpeg
+  
+  # Ubuntu/Debian
+  sudo apt-get install ffmpeg
+  ```
 - API keys (see below)
 
 ## 1. Install Dependencies
@@ -27,10 +35,13 @@ pip install -r requirements.txt
 You'll need these API keys:
 
 1. **Eleven Labs** - https://elevenlabs.io/app/settings/api-keys
-2. **OpenAI** (or Anthropic) - https://platform.openai.com/api-keys
+2. **Anthropic** (recommended) or OpenAI
+   - Anthropic: https://console.anthropic.com/settings/keys
+   - OpenAI: https://platform.openai.com/api-keys
 3. **Shotstack** - https://dashboard.shotstack.io/api-keys
-   - Get both sandbox and production keys
    - Sandbox is free for testing
+
+**Recommended:** Use Anthropic Claude for better content analysis and higher token limits.
 
 ## 3. Configure Environment
 
@@ -44,16 +55,20 @@ Edit `.env` and add your API keys:
 
 ```bash
 ELEVENLABS_API_KEY=your-key-here
-OPENAI_API_KEY=your-key-here
+
+# LLM Provider (Anthropic recommended)
+ANTHROPIC_API_KEY=your-key-here
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-3-opus-20240229
+
+# Or use OpenAI
+# OPENAI_API_KEY=your-key-here
+# LLM_PROVIDER=openai
+# LLM_MODEL=gpt-4o
 
 # Shotstack (use sandbox for testing)
-SHOTSTACK_SANDBOX_API_KEY=your-sandbox-key-here
-SHOTSTACK_PRODUCTION_API_KEY=your-production-key-here
+SHOTSTACK_API_KEY=your-sandbox-key-here
 SHOTSTACK_ENV=sandbox
-
-# Choose your LLM provider
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4-turbo-preview
 ```
 
 ## 4. Set Up Database
@@ -93,7 +108,7 @@ python manage.py runserver
 
 ```bash
 curl -X POST http://localhost:8000/api/jobs/ \
-  -F "video_file=@/path/to/video.mp4" \
+  -F "media_file=@/path/to/video.mp4" \
   -F "num_segments=3"
 ```
 
@@ -118,7 +133,7 @@ import requests
 with open('/path/to/video.mp4', 'rb') as f:
     response = requests.post(
         'http://localhost:8000/api/jobs/',
-        files={'video_file': f},
+        files={'media_file': f},
         data={'num_segments': 3}
     )
     job_id = response.json()['id']
@@ -141,21 +156,35 @@ python manage.py createsuperuser
 
 Then visit: http://localhost:8000/admin/
 
-## Processing Flow
+## Processing Flow (4 Stages)
 
-1. **Upload** → Video is saved and job created
-2. **Transcribe** → Eleven Labs extracts transcript (~1-2 min)
-3. **Analyze** → LLM identifies viral segments (~30 sec)
-4. **Clip** → Shotstack creates videos (~2-5 min per clip)
-5. **Complete** → Clips available via API
+1. **Upload** → Video/audio saved, job created (status: `pending`)
+2. **Preprocessing** (Stage 1) → Extract audio from video (status: `preprocessing`)
+   - Video: Audio extracted using ffmpeg (~10-30 sec)
+   - Audio: Passes through unchanged
+3. **Transcription** (Stage 2) → ElevenLabs extracts transcript (status: `transcribing`)
+   - Processing time: ~2 min per minute of audio
+4. **Analysis** (Stage 3) → LLM identifies viral segments (status: `analyzing`)
+   - Processing time: ~15-30 seconds
+5. **Clipping** (Stage 4) → Shotstack creates videos (status: `clipping`)
+   - Processing time: ~1-2 min per clip (parallel)
+6. **Complete** → Clips available via API (status: `completed`)
 
 ## Expected Timeline
 
-For a 1-hour podcast:
-- Transcription: 1-2 minutes
+For a 1-hour video podcast:
+- Preprocessing: 20-30 seconds (audio extraction)
+- Transcription: 2 minutes
 - Analysis: 30 seconds
 - Clipping (5 segments): 10-15 minutes total
-- **Total: ~12-18 minutes**
+- **Total: ~13-18 minutes**
+
+For a 1-hour audio podcast:
+- Preprocessing: < 1 second (passthrough)
+- Transcription: 2 minutes
+- Analysis: 30 seconds
+- Clipping (5 segments): 10-15 minutes total
+- **Total: ~13-18 minutes**
 
 ## Troubleshooting
 
@@ -205,11 +234,26 @@ celery -A config worker -l debug
 celery -A config inspect active
 ```
 
+## Testing the Pipeline
+
+Test individual stages or the complete pipeline:
+
+```bash
+# Test Stage 1 (preprocessing)
+python tests/test_stage1_preprocessing.py demo_files/video.mp4
+
+# Test complete pipeline
+python tests/test_runner.py --input demo_files/video.mp4 --all-stages
+```
+
+See [Testing Framework](README.md#testing-framework) for details.
+
 ## Next Steps
 
 - Read the full [README.md](README.md) for detailed documentation
-- Explore the [API Reference](README.md#api-reference)
-- Check [example_api_usage.py](example_api_usage.py) for programmatic usage
+- Explore the [Testing Framework](README.md#testing-framework)
+- Check [API Reference](README.md#api-reference)
+- Review [example_api_usage.py](example_api_usage.py) for programmatic usage
 - Customize segment detection in `viral_clips/services/llm_service.py`
 
 ## Support

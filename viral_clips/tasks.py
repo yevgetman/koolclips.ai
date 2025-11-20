@@ -5,7 +5,7 @@ import logging
 import os
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
-from .services import ElevenLabsService, LLMService, ShotstackService
+from .services import PreprocessingService, ElevenLabsService, LLMService, ShotstackService
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,10 @@ def process_video_job(self, job_id):
         job = VideoJob.objects.get(id=job_id)
         logger.info(f"Starting processing for job {job_id}")
         
-        # Step 1: Transcribe video
-        job.status = 'transcribing'
+        # Step 1: Preprocess media (extract audio if needed)
+        job.status = 'preprocessing'
         job.save()
-        transcribe_video.delay(job_id)
+        preprocess_media.delay(job_id)
         
     except VideoJob.DoesNotExist:
         logger.error(f"VideoJob {job_id} not found")
@@ -38,9 +38,51 @@ def process_video_job(self, job_id):
 
 
 @shared_task(bind=True)
+def preprocess_media(self, job_id):
+    """
+    Preprocess media file (extract audio from video if needed)
+    
+    Args:
+        job_id: UUID of the VideoJob
+    """
+    try:
+        job = VideoJob.objects.get(id=job_id)
+        logger.info(f"Preprocessing media for job {job_id} (file_type: {job.file_type})")
+        
+        # Get media file path
+        media_path = job.media_file.path
+        
+        # Preprocess using PreprocessingService
+        preprocessing = PreprocessingService()
+        result = preprocessing.process_media_file(media_path)
+        
+        # Store extracted audio path (or original if audio file)
+        audio_path = result['audio_path']
+        if result['extracted']:
+            job.extracted_audio_path = audio_path
+            logger.info(f"Audio extracted from video to: {audio_path}")
+        else:
+            logger.info(f"Audio file passed through without extraction")
+        
+        job.save()
+        
+        logger.info(f"Preprocessing complete for job {job_id}")
+        
+        # Move to next step: transcribe with audio path
+        transcribe_video.delay(job_id)
+        
+    except Exception as e:
+        logger.error(f"Preprocessing failed for job {job_id}: {str(e)}")
+        job = VideoJob.objects.get(id=job_id)
+        job.status = 'failed'
+        job.error_message = f"Preprocessing failed: {str(e)}"
+        job.save()
+
+
+@shared_task(bind=True)
 def transcribe_video(self, job_id):
     """
-    Transcribe video using Eleven Labs API
+    Transcribe audio using Eleven Labs API
     
     Args:
         job_id: UUID of the VideoJob
@@ -49,12 +91,16 @@ def transcribe_video(self, job_id):
         job = VideoJob.objects.get(id=job_id)
         logger.info(f"Transcribing {job.file_type} for job {job_id}")
         
-        # Get media file path
-        media_path = job.media_file.path
+        job.status = 'transcribing'
+        job.save()
+        
+        # Get audio file path (use extracted audio if available, otherwise original file)
+        audio_path = job.extracted_audio_path if job.extracted_audio_path else job.media_file.path
+        logger.info(f"Using audio file: {audio_path}")
         
         # Call Eleven Labs service
         elevenlabs = ElevenLabsService()
-        transcript_data = elevenlabs.transcribe_video(media_path)
+        transcript_data = elevenlabs.transcribe_video(audio_path)
         
         # Save transcript data
         job.transcript_json = transcript_data

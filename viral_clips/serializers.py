@@ -40,11 +40,11 @@ class VideoJobSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'media_file', 'file_type', 'status', 'error_message',
             'num_segments', 'min_duration', 'max_duration',
-            'transcript_json', 'segments',
+            'extracted_audio_path', 'transcript_json', 'segments',
             'created_at', 'updated_at', 'completed_at'
         ]
-        read_only_fields = ['id', 'file_type', 'status', 'error_message', 'transcript_json', 
-                           'created_at', 'updated_at', 'completed_at', 'segments']
+        read_only_fields = ['id', 'file_type', 'status', 'error_message', 'extracted_audio_path',
+                           'transcript_json', 'created_at', 'updated_at', 'completed_at', 'segments']
 
 
 class VideoJobCreateSerializer(serializers.ModelSerializer):

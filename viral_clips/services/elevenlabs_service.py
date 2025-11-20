@@ -34,11 +34,12 @@ class ElevenLabsService:
                 # Use the speech_to_text.convert method from the SDK
                 # Parameters:
                 # - file: the audio/video file
-                # - model_id: optional model selection
+                # - model_id: required model selection (eleven_multilingual_v2 is default)
                 # - language_code: optional language hint
                 # - timestamps_granularity: 'word' for word-level timestamps
                 response = self.client.speech_to_text.convert(
                     file=audio_file,
+                    model_id='scribe_v2',  # Use latest scribe model
                     timestamps_granularity='word'  # Get word-level timestamps
                 )
             
