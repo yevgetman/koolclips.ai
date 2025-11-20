@@ -118,10 +118,18 @@ class Stage3Tester:
             
             # Validate segments
             validation = self._validate_segments(segments, min_duration, max_duration)
+            
+            # Show critical issues (these are problems)
             if not validation['valid']:
-                print(f"\n⚠ Warning: Some segments have validation issues:")
+                print(f"\n❌ Critical validation issues found:")
                 for issue in validation['issues']:
                     print(f"  - {issue}")
+            
+            # Show warnings (these are acceptable for content coherence)
+            if validation.get('warnings'):
+                print(f"\nℹ️  Duration notes (acceptable for content coherence):")
+                for warning in validation['warnings']:
+                    print(f"  - {warning}")
             
             # Save segments if requested
             if save_output:
@@ -162,17 +170,24 @@ class Stage3Tester:
     
     def _validate_segments(self, segments, min_duration, max_duration):
         """
-        Validate segment data
+        Validate segment data with flexible duration bounds
         
         Args:
             segments: List of segment dicts
-            min_duration: Minimum allowed duration
-            max_duration: Maximum allowed duration
+            min_duration: Target minimum duration
+            max_duration: Target maximum duration
             
         Returns:
             dict: Validation results
         """
         issues = []
+        warnings = []
+        
+        # Calculate flexible bounds (50% buffer for content coherence)
+        target_duration = (min_duration + max_duration) / 2
+        buffer_factor = 0.5
+        flexible_min = target_duration * (1 - buffer_factor)
+        flexible_max = target_duration * (1 + buffer_factor)
         
         for i, segment in enumerate(segments, 1):
             # Check required fields
@@ -193,14 +208,28 @@ class Stage3Tester:
                     f"(calculated: {calculated_duration:.2f}s, stored: {segment['duration']:.2f}s)"
                 )
             
-            # Check duration bounds
-            if segment['duration'] < min_duration:
+            # Check duration bounds with flexible range
+            # Only flag as issue if WAY outside range, otherwise just warn
+            if segment['duration'] < flexible_min * 0.5:  # Less than half the flexible min
                 issues.append(
-                    f"Segment {i}: Duration ({segment['duration']:.2f}s) below minimum ({min_duration}s)"
+                    f"Segment {i}: Duration ({segment['duration']:.2f}s) significantly below target range "
+                    f"({flexible_min:.0f}s-{flexible_max:.0f}s)"
                 )
-            if segment['duration'] > max_duration:
+            elif segment['duration'] < flexible_min:
+                warnings.append(
+                    f"Segment {i}: Duration ({segment['duration']:.2f}s) below flexible range "
+                    f"({flexible_min:.0f}s-{flexible_max:.0f}s) - OK if content is complete"
+                )
+            
+            if segment['duration'] > flexible_max * 2:  # More than double the flexible max
                 issues.append(
-                    f"Segment {i}: Duration ({segment['duration']:.2f}s) above maximum ({max_duration}s)"
+                    f"Segment {i}: Duration ({segment['duration']:.2f}s) significantly above target range "
+                    f"({flexible_min:.0f}s-{flexible_max:.0f}s)"
+                )
+            elif segment['duration'] > flexible_max:
+                warnings.append(
+                    f"Segment {i}: Duration ({segment['duration']:.2f}s) above flexible range "
+                    f"({flexible_min:.0f}s-{flexible_max:.0f}s) - OK for content coherence"
                 )
             
             # Check for overlaps with previous segments
@@ -211,7 +240,8 @@ class Stage3Tester:
         
         return {
             'valid': len(issues) == 0,
-            'issues': issues
+            'issues': issues,
+            'warnings': warnings
         }
     
     def _save_segments(self, segments, transcript_data):

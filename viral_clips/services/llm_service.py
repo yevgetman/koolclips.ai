@@ -72,18 +72,29 @@ class LLMService:
         
         transcript_text = json.dumps(simplified_data, indent=2)
         
+        # Calculate target duration and acceptable range
         min_minutes = min_duration / 60
         max_minutes = max_duration / 60
+        target_minutes = (min_minutes + max_minutes) / 2
+        
+        # Add 50% buffer for content coherence (e.g., 60s target allows 30-90s range)
+        buffer_factor = 0.5
+        flexible_min = target_minutes * (1 - buffer_factor)
+        flexible_max = target_minutes * (1 + buffer_factor)
         
         prompt = f"""Review the attached transcript of a podcast. 
 
 Use the transcript text to choose {num_segments} segments of dialogue that have the most interesting, provocative, and potentially viral content. 
 
 The segments should:
-- Be selected to have a mostly coherent topic and thought
-- Be between {min_minutes}-{max_minutes} minutes in length when spoken
+- PRIORITIZE content coherence and completeness of thought over strict timing
+- Target approximately {target_minutes:.1f} minutes in length when spoken
+- Acceptable range: {flexible_min:.1f} to {flexible_max:.1f} minutes (flexibility for natural topic boundaries)
 - Estimate timing based on typical speech rate (~150 words per minute)
 - Have high viral potential (controversial, insightful, emotional, or surprising)
+- End at natural stopping points rather than cutting mid-thought
+
+IMPORTANT: It's better to have a slightly longer segment that tells a complete story than a shorter segment that feels incomplete or cuts off awkwardly. Prioritize content quality and coherence.
 
 Return ONLY a valid JSON array with {num_segments} segments in the following format:
 [
