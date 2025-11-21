@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+import re
 from dotenv import load_dotenv
 import dj_database_url
 
@@ -154,7 +155,6 @@ if CLOUDCUBE_URL:
     AWS_ACCESS_KEY_ID = CLOUDCUBE_ACCESS_KEY_ID or os.getenv('AWS_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = CLOUDCUBE_SECRET_ACCESS_KEY or os.getenv('AWS_SECRET_ACCESS_KEY')
     # Extract bucket name from CLOUDCUBE_URL (e.g., cloud-cube, cloud-cube-eu)
-    import re
     bucket_match = re.search(r'https://([^.]+)\.s3', CLOUDCUBE_URL)
     AWS_STORAGE_BUCKET_NAME = bucket_match.group(1) if bucket_match else 'cloud-cube'
     AWS_S3_BUCKET_OUTPUT = AWS_STORAGE_BUCKET_NAME  # Use same bucket for output
