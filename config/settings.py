@@ -143,6 +143,37 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.getenv('MEDIA_ROOT', BASE_DIR / 'media')
 
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_INPUT', 'koolclips-input-media')
+AWS_S3_BUCKET_OUTPUT = os.getenv('AWS_S3_BUCKET_OUTPUT', 'koolclips-output-clips')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION', 'us-east-1')
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+
+# CloudFront Configuration
+AWS_CLOUDFRONT_DOMAIN_INPUT = os.getenv('AWS_CLOUDFRONT_DOMAIN_INPUT', '')
+AWS_CLOUDFRONT_DOMAIN_OUTPUT = os.getenv('AWS_CLOUDFRONT_DOMAIN_OUTPUT', '')
+
+# S3 Storage Settings
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+
+# Use S3 for media files if AWS credentials are configured
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    if AWS_CLOUDFRONT_DOMAIN_INPUT:
+        MEDIA_URL = f'https://{AWS_CLOUDFRONT_DOMAIN_INPUT}/'
+    else:
+        MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
+else:
+    # Fallback to local storage for development
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.getenv('MEDIA_ROOT', BASE_DIR / 'media')
+
 # API Keys
 ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')

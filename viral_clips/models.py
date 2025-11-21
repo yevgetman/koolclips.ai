@@ -35,6 +35,12 @@ class VideoJob(models.Model):
         help_text='Path to extracted audio file (for video uploads)'
     )
     
+    # S3/CloudFront URLs
+    media_file_s3_url = models.URLField(max_length=1000, blank=True, null=True, help_text='Direct S3 URL for media file')
+    media_file_cloudfront_url = models.URLField(max_length=1000, blank=True, null=True, help_text='CloudFront CDN URL for media file')
+    extracted_audio_s3_url = models.URLField(max_length=1000, blank=True, null=True, help_text='Direct S3 URL for extracted audio')
+    extracted_audio_cloudfront_url = models.URLField(max_length=1000, blank=True, null=True, help_text='CloudFront CDN URL for extracted audio')
+    
     # Transcript data
     transcript_json = models.JSONField(blank=True, null=True)
     
@@ -57,6 +63,25 @@ class VideoJob(models.Model):
     def is_audio_only(self):
         """Check if this job is for audio-only processing"""
         return self.file_type == 'audio'
+    
+    def get_media_cloudfront_url(self):
+        """Get CloudFront URL for media file"""
+        if self.media_file_cloudfront_url:
+            return self.media_file_cloudfront_url
+        
+        if self.media_file:
+            from django.conf import settings
+            if settings.AWS_CLOUDFRONT_DOMAIN_INPUT:
+                return f"https://{settings.AWS_CLOUDFRONT_DOMAIN_INPUT}/{self.media_file.name}"
+        
+        return None
+    
+    def get_audio_cloudfront_url(self):
+        """Get CloudFront URL for extracted audio"""
+        if self.extracted_audio_cloudfront_url:
+            return self.extracted_audio_cloudfront_url
+        
+        return None
 
 
 class TranscriptSegment(models.Model):
@@ -109,6 +134,11 @@ class ClippedVideo(models.Model):
     video_url = models.URLField(blank=True, null=True)
     video_file = models.FileField(upload_to='clips/', blank=True, null=True)
     
+    # S3/CloudFront URLs
+    video_s3_url = models.URLField(max_length=1000, blank=True, null=True, help_text='Direct S3 URL for clip')
+    video_cloudfront_url = models.URLField(max_length=1000, blank=True, null=True, help_text='CloudFront CDN URL for clip')
+    shotstack_render_url = models.URLField(max_length=1000, blank=True, null=True, help_text='Shotstack render URL')
+    
     # Metadata
     error_message = models.TextField(blank=True, null=True)
     
@@ -122,3 +152,15 @@ class ClippedVideo(models.Model):
     
     def __str__(self):
         return f"Clip for {self.segment.title} - {self.status}"
+    
+    def get_video_cloudfront_url(self):
+        """Get CloudFront URL for video clip"""
+        if self.video_cloudfront_url:
+            return self.video_cloudfront_url
+        
+        if self.video_file:
+            from django.conf import settings
+            if settings.AWS_CLOUDFRONT_DOMAIN_OUTPUT:
+                return f"https://{settings.AWS_CLOUDFRONT_DOMAIN_OUTPUT}/{self.video_file.name}"
+        
+        return None

@@ -6,13 +6,21 @@ from .utils import validate_media_file
 class ClippedVideoSerializer(serializers.ModelSerializer):
     """Serializer for ClippedVideo model"""
     
+    # Return CloudFront URL if available, otherwise video_url
+    public_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = ClippedVideo
         fields = [
-            'id', 'status', 'video_url', 'video_file',
+            'id', 'status', 'video_url', 'video_file', 'public_url',
+            'video_cloudfront_url', 'video_s3_url',
             'error_message', 'created_at', 'updated_at', 'completed_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'completed_at']
+    
+    def get_public_url(self, obj):
+        """Return the best available public URL for the clip"""
+        return obj.get_video_cloudfront_url() or obj.video_url
 
 
 class TranscriptSegmentSerializer(serializers.ModelSerializer):
@@ -71,6 +79,24 @@ class VideoJobCreateSerializer(serializers.ModelSerializer):
         
         # Create the job
         job = VideoJob.objects.create(**validated_data)
+        
+        # Store S3/CloudFront URLs if file was uploaded to S3
+        if job.media_file and hasattr(job.media_file, 'url'):
+            from .services.s3_service import S3Service
+            if S3Service.is_s3_configured():
+                from django.conf import settings
+                s3_key = job.media_file.name
+                
+                # Generate S3 URL
+                bucket = settings.AWS_STORAGE_BUCKET_NAME
+                region = settings.AWS_S3_REGION_NAME
+                job.media_file_s3_url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
+                
+                # Generate CloudFront URL if configured
+                if settings.AWS_CLOUDFRONT_DOMAIN_INPUT:
+                    job.media_file_cloudfront_url = f"https://{settings.AWS_CLOUDFRONT_DOMAIN_INPUT}/{s3_key}"
+                
+                job.save()
         
         # Trigger the processing pipeline
         from .tasks import process_video_job

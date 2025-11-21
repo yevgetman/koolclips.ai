@@ -6,6 +6,7 @@ import os
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
 from .services import PreprocessingService, ElevenLabsService, LLMService, ShotstackService
+from .services.s3_service import S3Service
 
 logger = logging.getLogger(__name__)
 
@@ -41,34 +42,74 @@ def process_video_job(self, job_id):
 def preprocess_media(self, job_id):
     """
     Preprocess media file (extract audio from video if needed)
+    Now downloads from S3, processes, and uploads back to S3
     
     Args:
         job_id: UUID of the VideoJob
     """
+    temp_input = None
+    temp_audio = None
+    
     try:
         job = VideoJob.objects.get(id=job_id)
         logger.info(f"Preprocessing media for job {job_id} (file_type: {job.file_type})")
         
-        # Get media file path
-        media_path = job.media_file.path
+        # Check if S3 is configured
+        if not S3Service.is_s3_configured():
+            # Fallback to local file processing for development
+            logger.warning(f"S3 not configured, using local file processing")
+            media_path = job.media_file.path
+            preprocessing = PreprocessingService()
+            result = preprocessing.process_media_file(media_path)
+            audio_path = result['audio_path']
+            if result['extracted']:
+                job.extracted_audio_path = audio_path
+                logger.info(f"Audio extracted from video to: {audio_path}")
+            job.save()
+            transcribe_video.delay(job_id)
+            return
+        
+        # Initialize S3 service
+        s3_service = S3Service()
+        
+        # Download file from S3 to temp directory
+        s3_key = job.media_file.name
+        logger.info(f"Downloading media from S3: {s3_key}")
+        temp_input = s3_service.download_file(s3_key)
         
         # Preprocess using PreprocessingService
         preprocessing = PreprocessingService()
-        result = preprocessing.process_media_file(media_path)
         
-        # Store extracted audio path (or original if audio file)
-        audio_path = result['audio_path']
-        if result['extracted']:
-            job.extracted_audio_path = audio_path
-            logger.info(f"Audio extracted from video to: {audio_path}")
+        if job.file_type == 'video':
+            # Extract audio from video
+            logger.info(f"Extracting audio from video")
+            temp_audio = preprocessing.extract_audio_from_video(temp_input, output_format='mp3')
+            
+            # Upload audio to S3
+            audio_s3_key = f"uploads/{job_id}/audio/{os.path.basename(temp_audio)}"
+            logger.info(f"Uploading audio to S3: {audio_s3_key}")
+            audio_urls = s3_service.upload_file(
+                temp_audio,
+                audio_s3_key,
+                content_type='audio/mpeg'
+            )
+            
+            job.extracted_audio_s3_url = audio_urls['s3_url']
+            job.extracted_audio_cloudfront_url = audio_urls['cloudfront_url']
+            job.extracted_audio_path = audio_s3_key
+            
+            logger.info(f"Audio uploaded to S3: {audio_urls['cloudfront_url']}")
         else:
-            logger.info(f"Audio file passed through without extraction")
+            # Audio file - use original S3 URLs
+            job.extracted_audio_s3_url = job.media_file_s3_url
+            job.extracted_audio_cloudfront_url = job.media_file_cloudfront_url
+            job.extracted_audio_path = job.media_file.name
+            logger.info(f"Audio file - using original S3 URLs")
         
         job.save()
-        
         logger.info(f"Preprocessing complete for job {job_id}")
         
-        # Move to next step: transcribe with audio path
+        # Move to next step
         transcribe_video.delay(job_id)
         
     except Exception as e:
@@ -77,6 +118,14 @@ def preprocess_media(self, job_id):
         job.status = 'failed'
         job.error_message = f"Preprocessing failed: {str(e)}"
         job.save()
+    finally:
+        # Clean up temp files
+        if temp_input and os.path.exists(temp_input):
+            os.remove(temp_input)
+            logger.info(f"Cleaned up temp input file: {temp_input}")
+        if temp_audio and os.path.exists(temp_audio):
+            os.remove(temp_audio)
+            logger.info(f"Cleaned up temp audio file: {temp_audio}")
 
 
 @shared_task(bind=True)
@@ -94,9 +143,31 @@ def transcribe_video(self, job_id):
         job.status = 'transcribing'
         job.save()
         
-        # Get audio file path (use extracted audio if available, otherwise original file)
-        audio_path = job.extracted_audio_path if job.extracted_audio_path else job.media_file.path
-        logger.info(f"Using audio file: {audio_path}")
+        # Get audio file - prefer S3 URL, fallback to local path
+        if job.extracted_audio_cloudfront_url:
+            audio_path = job.extracted_audio_cloudfront_url
+            logger.info(f"Using audio CloudFront URL: {audio_path}")
+        elif job.extracted_audio_s3_url:
+            audio_path = job.extracted_audio_s3_url
+            logger.info(f"Using audio S3 URL: {audio_path}")
+        elif job.extracted_audio_path:
+            # S3 configured - download from S3
+            if S3Service.is_s3_configured():
+                s3_service = S3Service()
+                audio_path = s3_service.download_file(job.extracted_audio_path)
+                logger.info(f"Downloaded audio from S3 to: {audio_path}")
+            else:
+                audio_path = job.extracted_audio_path
+                logger.info(f"Using local audio file: {audio_path}")
+        else:
+            # Fallback to original media file
+            if S3Service.is_s3_configured() and job.media_file.name:
+                s3_service = S3Service()
+                audio_path = s3_service.download_file(job.media_file.name)
+                logger.info(f"Downloaded media from S3 to: {audio_path}")
+            else:
+                audio_path = job.media_file.path
+                logger.info(f"Using local media file: {audio_path}")
         
         # Call Eleven Labs service
         elevenlabs = ElevenLabsService()
@@ -225,9 +296,16 @@ def process_clip(self, clip_id):
         clip.status = 'processing'
         clip.save()
         
-        # Get media URL (need to make it accessible to Shotstack)
-        # For now, we'll use the file path - in production, upload to S3 or similar
-        media_url = job.media_file.url
+        # Get media CloudFront URL for Shotstack
+        media_url = job.get_media_cloudfront_url()
+        if not media_url:
+            # Fallback to S3 URL or local URL
+            if job.media_file_s3_url:
+                media_url = job.media_file_s3_url
+            else:
+                media_url = job.media_file.url
+        
+        logger.info(f"Using media URL for Shotstack: {media_url}")
         is_audio = job.is_audio_only()
         
         # Create clip using Shotstack
@@ -275,7 +353,58 @@ def check_render_status(self, clip_id):
         status = shotstack.get_render_status(clip.shotstack_render_id)
         
         if status['status'] == 'done':
-            clip.video_url = status['url']
+            shotstack_url = status['url']
+            clip.shotstack_render_url = shotstack_url
+            logger.info(f"Shotstack render complete: {shotstack_url}")
+            
+            # Download from Shotstack and upload to S3 if configured
+            if S3Service.is_s3_configured():
+                try:
+                    s3_service = S3Service()
+                    segment = clip.segment
+                    job = segment.video_job
+                    
+                    # Download from Shotstack to temp file
+                    import requests
+                    import tempfile
+                    
+                    response = requests.get(shotstack_url, stream=True)
+                    response.raise_for_status()
+                    
+                    fd, temp_clip = tempfile.mkstemp(suffix='.mp4')
+                    os.close(fd)
+                    
+                    with open(temp_clip, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    
+                    logger.info(f"Downloaded clip from Shotstack to: {temp_clip}")
+                    
+                    # Upload to S3 output bucket
+                    clip_s3_key = f"clips/{job.id}/{segment.id}/clip.mp4"
+                    clip_urls = s3_service.upload_file(
+                        temp_clip,
+                        clip_s3_key,
+                        bucket=s3_service.output_bucket,
+                        content_type='video/mp4'
+                    )
+                    
+                    clip.video_s3_url = clip_urls['s3_url']
+                    clip.video_cloudfront_url = clip_urls['cloudfront_url']
+                    clip.video_url = clip_urls['cloudfront_url']  # Use CloudFront URL for public access
+                    
+                    # Clean up temp file
+                    os.remove(temp_clip)
+                    
+                    logger.info(f"Clip uploaded to S3: {clip.video_cloudfront_url}")
+                except Exception as upload_err:
+                    logger.error(f"Failed to upload clip to S3: {str(upload_err)}")
+                    # Fallback to Shotstack URL
+                    clip.video_url = shotstack_url
+            else:
+                # S3 not configured, use Shotstack URL directly
+                clip.video_url = shotstack_url
+            
             clip.status = 'completed'
             clip.completed_at = timezone.now()
             clip.save()
