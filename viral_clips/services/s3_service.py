@@ -129,22 +129,24 @@ class S3Service:
             logger.error(f"Unexpected error uploading to S3: {str(e)}")
             raise
     
-    def download_file(self, s3_key, local_path=None, bucket=None):
+    def download_file(self, s3_key, local_path=None, bucket=None, normalize_key=False):
         """
         Download a file from S3 (with automatic Cloudcube support)
         
         Args:
-            s3_key: S3 key of the file (with or without cube prefix)
+            s3_key: S3 key of the file (should already include cube prefix if from storage backend)
             local_path: Local path to save (creates temp file if None)
             bucket: S3 bucket name (defaults to input bucket)
+            normalize_key: If True, add Cloudcube prefix (only use if s3_key doesn't have it)
         
         Returns:
             str: Path to downloaded file
         """
         bucket = bucket or self.input_bucket
         
-        # S3 key should already have cube prefix if it was uploaded via upload_file
-        # But handle both cases for flexibility
+        # Only add cube prefix if explicitly requested (for backwards compatibility)
+        if normalize_key:
+            s3_key = get_s3_key(s3_key, public=True)
         
         if local_path is None:
             # Create temp file with appropriate extension

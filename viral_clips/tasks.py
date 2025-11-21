@@ -73,7 +73,13 @@ def preprocess_media(self, job_id):
         s3_service = S3Service()
         
         # Download file from S3 to temp directory
-        s3_key = job.media_file.name
+        # For Cloudcube, we need to use the storage backend to get the actual S3 key
+        if hasattr(job.media_file, 'storage'):
+            # Get the actual S3 key from the storage backend
+            s3_key = job.media_file.storage._normalize_name(job.media_file.name)
+        else:
+            s3_key = job.media_file.name
+        
         logger.info(f"Downloading media from S3: {s3_key}")
         temp_input = s3_service.download_file(s3_key)
         
