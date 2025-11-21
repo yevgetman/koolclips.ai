@@ -183,7 +183,13 @@ AWS_S3_OBJECT_PARAMETERS = {
 
 # Use S3 for media files if AWS credentials are configured
 if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    if CLOUDCUBE_URL:
+        # Use custom Cloudcube storage backend
+        DEFAULT_FILE_STORAGE = 'viral_clips.storage_backends.CloudcubeStorage'
+    else:
+        # Use standard S3 storage for standalone AWS
+        DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    
     if AWS_CLOUDFRONT_DOMAIN_INPUT:
         MEDIA_URL = f'https://{AWS_CLOUDFRONT_DOMAIN_INPUT}/'
     else:
