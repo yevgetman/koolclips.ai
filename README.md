@@ -1,6 +1,10 @@
 # Viral Clips - AI-Powered Video Clipping Tool
 
+🚀 **Live Production App:** [www.koolclips.ai](https://www.koolclips.ai/api/)
+
 Automate the creation of short-form viral clips from long-form content like podcasts using AI.
+
+**Status:** ✅ Fully operational in production with complete cloud storage integration
 
 ## Overview
 
@@ -29,15 +33,42 @@ Upload audio files directly (MP3, WAV, M4A, etc.) for faster processing and smal
 
 ```
 Upload (Video/Audio) → Stage 1: Preprocessing → Stage 2: Transcription → Stage 3: Analysis → Stage 4: Clipping
-                        (Audio Extract)    (ElevenLabs)        (Claude/GPT)      (Shotstack)
+                        (FFmpeg + S3)      (ElevenLabs)        (Claude/GPT)      (Shotstack + S3)
+                             ↓                     ↓                    ↓                  ↓
+                       Cloudcube Storage    Download from S3    LLM Analysis     Public CDN URLs
 ```
+
+### Cloud Infrastructure
+
+**Production Deployment:**
+- **Platform:** Heroku (www.koolclips.ai)
+- **Storage:** Cloudcube (AWS S3)
+- **Database:** Heroku Postgres
+- **Cache:** Heroku Redis
+- **Workers:** Celery on Heroku dynos
+- **CDN:** Public S3 URLs with automatic cube prefixing
 
 ### Pipeline Stages
 
-1. **Stage 1 - Preprocessing**: Extract audio from video files using ffmpeg (audio files pass through)
-2. **Stage 2 - Transcription**: Convert audio to text with word-level timestamps via ElevenLabs
+1. **Stage 1 - Preprocessing**: Extract audio from video files using ffmpeg, upload to cloud storage
+   - Video: Extract audio → Upload to S3
+   - Audio: Upload directly to S3 (no extraction)
+   - Output: Public S3 URLs with Cloudcube prefixing
+
+2. **Stage 2 - Transcription**: Download from S3, convert audio to text with timestamps via ElevenLabs
+   - Downloads audio from cloud storage
+   - Generates transcript JSON with word-level timestamps
+   - Stores structured data in database
+
 3. **Stage 3 - Segment Identification**: Use LLM to identify viral segments
-4. **Stage 4 - Clip Creation**: Generate video clips via Shotstack API
+   - Analyzes transcript for viral potential
+   - Generates engaging titles, descriptions, reasoning
+   - Creates segments with precise timing
+
+4. **Stage 4 - Clip Creation**: Generate video clips via Shotstack, deliver via CDN
+   - Renders clips using Shotstack API
+   - Downloads and uploads to S3
+   - Generates public CDN URLs
 
 Each stage can be tested independently. See [Testing Framework](#testing-framework).
 
@@ -316,33 +347,42 @@ MEDIA_ROOT=/tmp/viral_clips_media
 ```
 viral-clips/
 ├── config/                 # Django project settings
-│   ├── settings.py
+│   ├── settings.py         # Auto-detects Cloudcube, configures S3
 │   ├── urls.py
-│   └── celery.py
+│   ├── wsgi.py
+│   ├── asgi.py
+│   └── celery.py           # Redis SSL configuration
 ├── viral_clips/           # Main application
-│   ├── models.py          # Database models (VideoJob, TranscriptSegment, ClippedVideo)
+│   ├── models.py          # Database models with S3 URL fields
 │   ├── views.py           # API views
-│   ├── serializers.py     # REST serializers
-│   ├── tasks.py           # Celery tasks (4-stage pipeline)
-│   ├── services/          # External API integrations (4 stages)
-│   │   ├── preprocessing_service.py    # Stage 1: Audio extraction
-│   │   ├── elevenlabs_service.py       # Stage 2: Transcription
-│   │   ├── llm_service.py              # Stage 3: Segment analysis
-│   │   └── shotstack_service.py        # Stage 4: Clip creation
+│   ├── serializers.py     # REST serializers with S3 integration
+│   ├── tasks.py           # Celery tasks (4-stage pipeline with S3)
+│   ├── storage_backends.py # Custom Cloudcube storage backend
+│   ├── services/          # External API integrations
+│   │   ├── s3_service.py              # S3 upload/download utility
+│   │   ├── cloudcube_adapter.py       # Cloudcube prefix handling
+│   │   ├── preprocessing_service.py   # Stage 1: Audio extraction
+│   │   ├── elevenlabs_service.py      # Stage 2: Transcription
+│   │   ├── llm_service.py             # Stage 3: Segment analysis
+│   │   └── shotstack_service.py       # Stage 4: Clip creation
+│   ├── migrations/        # Database migrations
 │   └── management/        # CLI commands
 │       └── commands/
-│           ├── process_video.py
-│           └── check_job.py
-├── tests/                 # Testing framework (modular per stage)
-│   ├── test_stage1_preprocessing.py
-│   ├── test_stage2_transcription.py
-│   ├── test_stage3_segment_identification.py
-│   ├── test_stage4_clip_creation.py
-│   ├── test_runner.py     # Integrated pipeline testing
-│   └── fixtures/          # Sample test data
-├── requirements.txt
+├── tests/                 # Local development tests
+├── test_stage1_production.py          # Production Stage 1 test
+├── test_stage1_audio_production.py    # Production audio test
+├── test_stage2_production.py          # Production Stage 2 test  
+├── test_stage3_production.py          # Production Stage 3 test
+├── test_stage4_production.py          # Production Stage 4 test
+├── Procfile               # Heroku process definitions
+├── runtime.txt            # Python version for Heroku
+├── requirements.txt       # Python dependencies
 ├── README.md
-└── QUICKSTART.md
+└── docs/                  # Documentation (gitignored)
+    ├── HEROKU_DEPLOYMENT.md
+    ├── CLOUDCUBE_QUICKSTART.md
+    ├── AWS_SETUP_GUIDE.md
+    └── STORAGE_RECOMMENDATION.md
 ```
 
 ## Development Workflow
@@ -387,7 +427,36 @@ viral-clips/
 
 ## Testing Framework
 
-The project includes a comprehensive testing framework for validating each stage independently or the complete pipeline.
+The project includes comprehensive testing for both local development and production environments.
+
+### Production Testing (Live API)
+
+Test the complete production pipeline at www.koolclips.ai:
+
+```bash
+# Test Stage 1: Video Preprocessing
+python3 test_stage1_production.py
+
+# Test Stage 1: Audio Preprocessing  
+python3 test_stage1_audio_production.py
+
+# Test Stage 2: Transcription (both video and audio)
+python3 test_stage2_production.py
+
+# Test Stage 3: LLM Analysis
+python3 test_stage3_production.py
+
+# Test Stage 4: Shotstack Rendering & CDN Delivery
+python3 test_stage4_production.py
+```
+
+**Production Test Features:**
+- ✅ Tests against live www.koolclips.ai API
+- ✅ Validates complete workflow from upload to public URL
+- ✅ Verifies Cloudcube storage integration
+- ✅ Tests ElevenLabs, LLM, and Shotstack APIs
+- ✅ Confirms public CDN URL accessibility
+- ✅ Provides downloadable clip URLs for inspection
 
 ### Test Individual Stages
 
@@ -433,16 +502,75 @@ python tests/test_stage3_segment_identification.py tests/fixtures/sample_transcr
 
 See `tests/README.md` for detailed testing documentation.
 
-## Production Considerations
+## Production Deployment
 
-1. **File Storage**: Use S3 or similar for production (not local files)
-2. **Video URLs**: Videos need to be publicly accessible for Shotstack
-3. **API Keys**: Keep production keys secure and separate
-4. **Celery**: Use production broker (RabbitMQ) instead of Redis
-5. **Database**: Use PostgreSQL instead of SQLite
-6. **Monitoring**: Add logging and error tracking (Sentry)
-7. **Rate Limiting**: Implement API rate limiting
-8. **Authentication**: Add API authentication/authorization
+### Current Production Setup
+
+**Live URL:** [www.koolclips.ai](https://www.koolclips.ai/api/)
+
+**Infrastructure:**
+- ✅ **Heroku Platform**: Web and worker dynos
+- ✅ **Cloudcube Storage**: AWS S3 with automatic prefixing
+- ✅ **Heroku Postgres**: Production database
+- ✅ **Heroku Redis**: Celery broker with SSL
+- ✅ **Custom Domain**: www.koolclips.ai configured
+- ✅ **Gunicorn**: WSGI server with 180s timeout for uploads
+- ✅ **Celery Workers**: Background job processing
+
+**Cost:** ~$27/month
+- Heroku Eco Dynos: $7/month (web + worker)
+- Heroku Postgres Mini: $5/month
+- Heroku Redis Mini: $3/month
+- Cloudcube Practice: $5/month
+- Heroku SSL: Included
+
+### Cloud Storage Integration
+
+**Cloudcube (Production):**
+- Automatic cube prefix: `mkwcrxocz0mi/public/`
+- Public files in `/public/` folder
+- Direct S3 URLs: `https://cloud-cube.s3.us-east-1.amazonaws.com/...`
+- Auto-configured via `CLOUDCUBE_URL` environment variable
+
+**AWS S3 + CloudFront (Alternative):**
+- Standalone AWS setup supported
+- CloudFront CDN for faster delivery
+- Separate input/output buckets
+- See `/docs/AWS_SETUP_GUIDE.md` for configuration
+
+### Heroku Deployment
+
+```bash
+# Deploy to Heroku
+git push heroku master
+
+# Scale dynos
+heroku ps:scale web=1 worker=1
+
+# View logs
+heroku logs --tail
+
+# Run migrations
+heroku run python manage.py migrate
+
+# Set environment variables
+heroku config:set ELEVENLABS_API_KEY=your-key
+heroku config:set ANTHROPIC_API_KEY=your-key
+heroku config:set SHOTSTACK_API_KEY=your-key
+```
+
+See `/docs/HEROKU_DEPLOYMENT.md` for complete deployment guide.
+
+### Production Monitoring
+
+1. **File Storage**: ✅ Cloudcube (S3) with public URLs
+2. **Video URLs**: ✅ Publicly accessible for Shotstack
+3. **API Keys**: ✅ Secured via Heroku config vars
+4. **Celery**: ✅ Production-ready with Redis SSL
+5. **Database**: ✅ Heroku Postgres with connection pooling
+6. **Monitoring**: Available via Heroku metrics
+7. **Rate Limiting**: Django REST framework throttling
+8. **Authentication**: DRF token authentication supported
 
 ## Troubleshooting
 
@@ -481,11 +609,31 @@ For issues and questions:
 - Create an issue on GitHub
 - Contact: [your-email]
 
+## Recent Updates
+
+### ✅ Completed (v1.0 - Production Ready)
+
+- ✅ **Production Deployment**: Fully deployed on Heroku at www.koolclips.ai
+- ✅ **Cloud Storage**: Cloudcube integration for persistent file storage
+- ✅ **Custom Domain**: www.koolclips.ai configured with SSL
+- ✅ **Complete Testing**: Production test suite for all 4 stages
+- ✅ **Public CDN**: Automatic public URL generation for clips
+- ✅ **Error Handling**: Robust error handling and logging
+- ✅ **Gunicorn Config**: Optimized for video uploads (180s timeout)
+- ✅ **Worker Scaling**: Celery workers for background processing
+
 ## Roadmap
 
-- [ ] Support for more video formats
-- [ ] Batch processing
+### Next (v1.1)
+- [ ] Web UI dashboard for job monitoring
+- [ ] Webhook notifications for job completion
+- [ ] API authentication/authorization
+- [ ] Rate limiting per user
+
+### Future (v2.0)
+- [ ] Batch processing for multiple videos
 - [ ] Custom branding/watermarks
-- [ ] Social media auto-posting
-- [ ] Advanced analytics
-- [ ] Web UI dashboard
+- [ ] Social media auto-posting (Twitter, TikTok, YouTube)
+- [ ] Advanced analytics (view counts, engagement)
+- [ ] Support for more video formats
+- [ ] Multi-language support
