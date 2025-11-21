@@ -31,7 +31,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-+lbpk7$tqv%wjq$5(j_hje9z2k
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,koolclips.herokuapp.com,.herokuapp.com').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,koolclips.herokuapp.com,.herokuapp.com,www.koolclips.ai,koolclips.ai').split(',')
 
 
 # Application definition
