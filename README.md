@@ -62,6 +62,7 @@ Upload (Video/Audio) → Stage 1: Preprocessing → Stage 2: Transcription → S
 
 3. **Stage 3 - Segment Identification**: Use LLM to identify viral segments
    - Analyzes transcript for viral potential
+   - LLM decides optimal segment length based on content quality and coherence (max 5 minutes)
    - Generates engaging titles, descriptions, reasoning
    - Creates segments with precise timing
 
@@ -159,9 +160,10 @@ python manage.py runserver
 # With video file
 curl -X POST http://localhost:8000/api/jobs/ \
   -F "media_file=@/path/to/video.mp4" \
-  -F "num_segments=5" \
-  -F "min_duration=60" \
-  -F "max_duration=180"
+  -F "num_segments=3" \
+  -F "max_duration=300"
+
+# Note: LLM decides optimal segment length based on content (max 5 minutes)
 
 # With audio file (auto-creates video with waveform)
 curl -X POST http://localhost:8000/api/jobs/ \
@@ -257,10 +259,11 @@ python manage.py process_video /path/to/podcast.mp3 --segments 5 --wait
 ```
 
 Options:
-- `--segments N` - Number of segments to generate (default: 5)
-- `--min-duration SECONDS` - Minimum segment duration (default: 60)
-- `--max-duration SECONDS` - Maximum segment duration (default: 180)
+- `--segments N` - Number of segments to generate (default: 3)
+- `--max-duration SECONDS` - Maximum segment duration in seconds (default: 300 = 5 minutes)
 - `--wait` - Wait for processing to complete and show results
+
+Note: The LLM decides optimal segment length based on content quality and coherence (no minimum duration)
 
 #### Check Job Status
 
@@ -397,6 +400,7 @@ viral-clips/
    - Processing time: ~2 minutes per minute of audio
 4. **Analysis** (Stage 3): LLM analyzes transcript to identify viral segments (status: `analyzing`)
    - Provider: Anthropic Claude or OpenAI
+   - LLM determines optimal segment length based on content quality (max 5 minutes)
    - Processing time: ~15-30 seconds
 5. **Clipping** (Stage 4): Shotstack creates clips based on timestamps (status: `clipping`)
    - Parallel processing for each segment
@@ -407,10 +411,13 @@ viral-clips/
 
 ### VideoJob
 - Tracks overall processing status through all 4 stages
-- Stores configuration (num_segments, min_duration, max_duration)
+- Stores configuration (num_segments, max_duration)
 - Fields:
   - `status`: Current stage (pending, preprocessing, transcribing, analyzing, clipping, completed, failed)
   - `file_type`: 'video' or 'audio'
+  - `num_segments`: Number of segments to identify (default: 3)
+  - `max_duration`: Maximum segment duration in seconds (default: 300 = 5 minutes, hard limit)
+  - `min_duration`: (Deprecated) LLM now decides optimal length based on content
   - `extracted_audio_path`: Path to extracted audio (for video files)
   - `transcript_json`: Full transcript with word-level timestamps
 - Links to segments and clips
@@ -482,7 +489,7 @@ python tests/test_runner.py --input /path/to/video.mp4 --all-stages
 
 # Custom parameters
 python tests/test_runner.py --input podcast.mp3 --all-stages \
-  --num-segments 3 --min-duration 45 --max-duration 120
+  --num-segments 3 --max-duration 300
 ```
 
 ### Test with Sample Data

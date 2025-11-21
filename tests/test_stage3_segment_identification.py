@@ -47,16 +47,15 @@ class Stage3Tester:
         print(f"LLM Provider: {self.service.provider}")
         print(f"LLM Model: {self.service.model}")
     
-    def test_identify_segments(self, transcript_data, num_segments=5, 
-                              min_duration=60, max_duration=180, save_output=True):
+    def test_identify_segments(self, transcript_data, num_segments=3, 
+                              max_duration=300, save_output=True):
         """
         Test identifying viral segments from transcript
         
         Args:
             transcript_data: Transcript data dict or path to JSON file
-            num_segments: Number of segments to identify (max 5)
-            min_duration: Minimum segment duration in seconds (default 60)
-            max_duration: Maximum segment duration in seconds (max 180)
+            num_segments: Number of segments to identify (default 3)
+            max_duration: Maximum segment duration in seconds (default 300s = 5 minutes, hard limit 300s)
             save_output: Whether to save segments to JSON file
             
         Returns:
@@ -71,14 +70,14 @@ class Stage3Tester:
             print(f"Warning: num_segments capped at 5 (requested: {num_segments})")
             num_segments = 5
         
-        if max_duration > 180:
-            print(f"Warning: max_duration capped at 180s (requested: {max_duration})")
-            max_duration = 180
+        if max_duration > 300:
+            print(f"Warning: max_duration capped at 300s (requested: {max_duration})")
+            max_duration = 300
         
         print(f"Parameters:")
         print(f"  Number of segments: {num_segments}")
-        print(f"  Min duration: {min_duration}s ({min_duration/60:.1f} min)")
         print(f"  Max duration: {max_duration}s ({max_duration/60:.1f} min)")
+        print(f"  Note: LLM decides optimal segment length based on content quality and coherence")
         
         try:
             # Load transcript if it's a file path
@@ -102,7 +101,6 @@ class Stage3Tester:
             segments = self.service.analyze_transcript(
                 transcript_data,
                 num_segments=num_segments,
-                min_duration=min_duration,
                 max_duration=max_duration
             )
             
@@ -117,19 +115,18 @@ class Stage3Tester:
             self._display_segments(segments)
             
             # Validate segments
-            validation = self._validate_segments(segments, min_duration, max_duration)
+            validation = self._validate_segments(segments, max_duration)
             
-            # Show critical issues (these are problems)
+            # Show validation results
             if not validation['valid']:
                 print(f"\n❌ Critical validation issues found:")
                 for issue in validation['issues']:
                     print(f"  - {issue}")
             
-            # Show warnings (these are acceptable for content coherence)
-            if validation.get('warnings'):
-                print(f"\nℹ️  Duration notes (acceptable for content coherence):")
-                for warning in validation['warnings']:
-                    print(f"  - {warning}")
+            if validation.get('info'):
+                print(f"\nℹ️  Segment length notes:")
+                for info in validation['info']:
+                    print(f"  - {info}")
             
             # Save segments if requested
             if save_output:
@@ -168,26 +165,19 @@ class Stage3Tester:
             if 'reasoning' in segment and segment['reasoning']:
                 print(f"  Reasoning: {segment['reasoning']}")
     
-    def _validate_segments(self, segments, min_duration, max_duration):
+    def _validate_segments(self, segments, max_duration):
         """
-        Validate segment data with flexible duration bounds
+        Validate segment data - LLM decides length based on content quality and coherence
         
         Args:
             segments: List of segment dicts
-            min_duration: Target minimum duration
-            max_duration: Target maximum duration
+            max_duration: Maximum allowed duration (hard limit)
             
         Returns:
             dict: Validation results
         """
         issues = []
-        warnings = []
-        
-        # Calculate flexible bounds (50% buffer for content coherence)
-        target_duration = (min_duration + max_duration) / 2
-        buffer_factor = 0.5
-        flexible_min = target_duration * (1 - buffer_factor)
-        flexible_max = target_duration * (1 + buffer_factor)
+        info = []
         
         for i, segment in enumerate(segments, 1):
             # Check required fields
@@ -208,28 +198,21 @@ class Stage3Tester:
                     f"(calculated: {calculated_duration:.2f}s, stored: {segment['duration']:.2f}s)"
                 )
             
-            # Check duration bounds with flexible range
-            # Only flag as issue if WAY outside range, otherwise just warn
-            if segment['duration'] < flexible_min * 0.5:  # Less than half the flexible min
+            # Check maximum duration (hard limit)
+            if segment['duration'] > max_duration:
                 issues.append(
-                    f"Segment {i}: Duration ({segment['duration']:.2f}s) significantly below target range "
-                    f"({flexible_min:.0f}s-{flexible_max:.0f}s)"
-                )
-            elif segment['duration'] < flexible_min:
-                warnings.append(
-                    f"Segment {i}: Duration ({segment['duration']:.2f}s) below flexible range "
-                    f"({flexible_min:.0f}s-{flexible_max:.0f}s) - OK if content is complete"
+                    f"Segment {i}: Duration ({segment['duration']:.2f}s) exceeds maximum "
+                    f"allowed duration ({max_duration:.0f}s = {max_duration/60:.1f} min)"
                 )
             
-            if segment['duration'] > flexible_max * 2:  # More than double the flexible max
-                issues.append(
-                    f"Segment {i}: Duration ({segment['duration']:.2f}s) significantly above target range "
-                    f"({flexible_min:.0f}s-{flexible_max:.0f}s)"
+            # Informational notes on segment length (not errors)
+            if segment['duration'] < 30:
+                info.append(
+                    f"Segment {i}: Short duration ({segment['duration']:.2f}s) - acceptable if content is complete"
                 )
-            elif segment['duration'] > flexible_max:
-                warnings.append(
-                    f"Segment {i}: Duration ({segment['duration']:.2f}s) above flexible range "
-                    f"({flexible_min:.0f}s-{flexible_max:.0f}s) - OK for content coherence"
+            elif segment['duration'] > 240:  # Over 4 minutes
+                info.append(
+                    f"Segment {i}: Long duration ({segment['duration']:.2f}s = {segment['duration']/60:.1f} min) - LLM determined this is optimal for content coherence"
                 )
             
             # Check for overlaps with previous segments
@@ -241,7 +224,7 @@ class Stage3Tester:
         return {
             'valid': len(issues) == 0,
             'issues': issues,
-            'warnings': warnings
+            'info': info
         }
     
     def _save_segments(self, segments, transcript_data):
@@ -265,16 +248,15 @@ class Stage3Tester:
         
         return output_path
     
-    def test_from_stage2_output(self, stage2_json_path, num_segments=5, 
-                               min_duration=60, max_duration=180):
+    def test_from_stage2_output(self, stage2_json_path, num_segments=3, 
+                               max_duration=300):
         """
         Test using output from Stage 2
         
         Args:
             stage2_json_path: Path to Stage 2 output JSON
-            num_segments: Number of segments to identify
-            min_duration: Minimum segment duration in seconds
-            max_duration: Maximum segment duration in seconds
+            num_segments: Number of segments to identify (default 3)
+            max_duration: Maximum segment duration in seconds (default 300s = 5 minutes)
             
         Returns:
             dict: Test results
@@ -297,7 +279,6 @@ class Stage3Tester:
             return self.test_identify_segments(
                 transcript,
                 num_segments=num_segments,
-                min_duration=min_duration,
                 max_duration=max_duration,
                 save_output=True
             )
@@ -342,12 +323,10 @@ def main():
     parser = argparse.ArgumentParser(description='Test Stage 3: Segment Identification')
     parser.add_argument('transcript_json', nargs='?', help='Input transcript JSON file')
     parser.add_argument('--from-stage2', help='Use output JSON from Stage 2')
-    parser.add_argument('--num-segments', type=int, default=5,
-                       help='Number of segments to identify (max 5, default: 5)')
-    parser.add_argument('--min-duration', type=int, default=60,
-                       help='Minimum segment duration in seconds (default: 60)')
-    parser.add_argument('--max-duration', type=int, default=180,
-                       help='Maximum segment duration in seconds (max 180, default: 180)')
+    parser.add_argument('--num-segments', type=int, default=3,
+                       help='Number of segments to identify (max 5, default: 3)')
+    parser.add_argument('--max-duration', type=int, default=300,
+                       help='Maximum segment duration in seconds (max 300s = 5 minutes, default: 300)')
     parser.add_argument('--output-dir', default='./test_outputs/stage3',
                        help='Output directory for test results')
     
@@ -361,14 +340,12 @@ def main():
         tester.test_from_stage2_output(
             args.from_stage2,
             num_segments=args.num_segments,
-            min_duration=args.min_duration,
             max_duration=args.max_duration
         )
     elif args.transcript_json:
         tester.test_identify_segments(
             args.transcript_json,
             num_segments=args.num_segments,
-            min_duration=args.min_duration,
             max_duration=args.max_duration,
             save_output=True
         )
@@ -377,7 +354,8 @@ def main():
         print("\nExample usage:")
         print("  python tests/test_stage3_segment_identification.py transcript.json")
         print("  python tests/test_stage3_segment_identification.py --from-stage2 test_outputs/stage2/transcript.json")
-        print("  python tests/test_stage3_segment_identification.py transcript.json --num-segments 3 --max-duration 120")
+        print("  python tests/test_stage3_segment_identification.py transcript.json --num-segments 3 --max-duration 300")
+        print("\nNote: LLM decides optimal segment length based on content quality (max 5 minutes)")
 
 
 if __name__ == '__main__':

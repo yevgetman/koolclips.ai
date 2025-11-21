@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import VideoJobViewSet, TranscriptSegmentViewSet, ClippedVideoViewSet
+from .views import VideoJobViewSet, TranscriptSegmentViewSet, ClippedVideoViewSet, upload_test_result
 
 router = DefaultRouter()
 router.register(r'jobs', VideoJobViewSet, basename='videojob')
@@ -9,4 +9,5 @@ router.register(r'clips', ClippedVideoViewSet, basename='clippedvideo')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('test-results/upload/', upload_test_result, name='upload-test-result'),
 ]

@@ -58,6 +58,18 @@ class VideoJobSerializer(serializers.ModelSerializer):
 class VideoJobCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating a VideoJob"""
     
+    # Make duration fields optional with defaults
+    min_duration = serializers.IntegerField(
+        required=False, 
+        default=60,
+        help_text='(Deprecated) LLM now decides segment length based on content quality and coherence'
+    )
+    max_duration = serializers.IntegerField(
+        required=False, 
+        default=300,
+        help_text='Maximum segment duration in seconds (default: 300s = 5 minutes, hard limit: 5 minutes)'
+    )
+    
     class Meta:
         model = VideoJob
         fields = ['media_file', 'num_segments', 'min_duration', 'max_duration']
@@ -71,6 +83,14 @@ class VideoJobCreateSerializer(serializers.ModelSerializer):
         
         # Store file type for later use
         self.context['file_type'] = file_type
+        return value
+    
+    def validate_max_duration(self, value):
+        """Validate max_duration doesn't exceed 5 minutes"""
+        if value > 300:
+            raise serializers.ValidationError(
+                "Maximum segment duration cannot exceed 300 seconds (5 minutes)"
+            )
         return value
         
     def create(self, validated_data):

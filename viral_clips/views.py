@@ -1,14 +1,18 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, parser_classes
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
+from django.conf import settings
+import json
+from datetime import datetime
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
 from .serializers import (
     VideoJobSerializer, VideoJobCreateSerializer, VideoJobListSerializer,
     TranscriptSegmentSerializer, ClippedVideoSerializer
 )
+from .services.s3_service import S3Service
 
 
 class VideoJobViewSet(viewsets.ModelViewSet):
@@ -152,3 +156,58 @@ class ClippedVideoViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(segment__video_job_id=job_id)
         
         return queryset
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def upload_test_result(request):
+    """
+    Upload test result JSON to cloud storage
+    
+    POST /api/test-results/upload/
+    Body: JSON data to upload
+    
+    Returns: S3 URL of uploaded file
+    """
+    try:
+        # Get JSON data from request
+        data = request.data
+        
+        # Generate filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        test_type = data.get('test_info', {}).get('test_type', 'test')
+        job_id = data.get('job_id', 'unknown')
+        filename = f"test_results/{test_type}_{job_id}_{timestamp}.json"
+        
+        # Convert to JSON string
+        json_content = json.dumps(data, indent=2, ensure_ascii=False)
+        json_bytes = json_content.encode('utf-8')
+        
+        # Upload to S3
+        s3_service = S3Service()
+        s3_url = s3_service.upload_file_content(
+            json_bytes,
+            filename,
+            content_type='application/json'
+        )
+        
+        # Get CloudFront URL if available
+        if settings.AWS_CLOUDFRONT_DOMAIN_INPUT:
+            cloudfront_url = f"https://{settings.AWS_CLOUDFRONT_DOMAIN_INPUT}/{filename}"
+        else:
+            cloudfront_url = s3_url
+        
+        return Response({
+            'success': True,
+            'message': 'Test results uploaded successfully',
+            's3_url': s3_url,
+            'cloudfront_url': cloudfront_url,
+            'public_url': cloudfront_url,
+            'filename': filename
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -52,6 +52,31 @@ class S3Service:
         self.cloudfront_input = settings.AWS_CLOUDFRONT_DOMAIN_INPUT
         self.cloudfront_output = settings.AWS_CLOUDFRONT_DOMAIN_OUTPUT
     
+    def upload_file_content(self, content_bytes, s3_key, bucket=None, content_type=None, public=True):
+        """
+        Upload byte content directly to S3 (with automatic Cloudcube support)
+        
+        Args:
+            content_bytes: Bytes content to upload
+            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
+            bucket: S3 bucket name (defaults to input bucket)
+            content_type: MIME type (optional)
+            public: If True, makes file publicly accessible (important for Cloudcube)
+        
+        Returns:
+            str: Public URL of uploaded file
+        """
+        import io
+        
+        # Create a file-like object from bytes
+        file_obj = io.BytesIO(content_bytes)
+        
+        # Upload using upload_file method
+        result = self.upload_file(file_obj, s3_key, bucket, content_type, public)
+        
+        # Return the public URL
+        return result.get('public_url') or result.get('cloudfront_url') or result.get('s3_url')
+    
     def upload_file(self, file_obj, s3_key, bucket=None, content_type=None, public=True):
         """
         Upload a file to S3 (with automatic Cloudcube support)

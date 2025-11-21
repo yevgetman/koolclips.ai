@@ -8,6 +8,8 @@ import requests
 import time
 import sys
 import os
+import json
+from datetime import datetime
 
 # Production API URL
 API_URL = "https://www.koolclips.ai/api"
@@ -46,8 +48,7 @@ def create_job_and_wait_for_analysis():
             files = {'media_file': f}
             data = {
                 'num_segments': 2,  # Request 2 segments
-                'min_duration': 3,
-                'max_duration': 10
+                'max_duration': 300  # Max 5 minutes, LLM decides optimal length
             }
             
             print_status("Uploading", "pending", "Creating job...")
@@ -179,6 +180,60 @@ def validate_segment_structure(segment):
     
     return True
 
+def save_segments_to_cloud(segments, job_id):
+    """Save segments JSON to cloud storage and return public URL"""
+    print_header("Saving Segments to Cloud Storage")
+    
+    try:
+        # Create output data structure
+        output_data = {
+            'job_id': job_id,
+            'timestamp': datetime.now().isoformat(),
+            'num_segments': len(segments),
+            'segments': segments,
+            'test_info': {
+                'test_type': 'stage3_production',
+                'api_url': API_URL
+            }
+        }
+        
+        # Save to local file first
+        output_filename = f"stage3_segments_{job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        local_path = f"/tmp/{output_filename}"
+        
+        with open(local_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+        
+        print_status("Local file", "success", local_path)
+        
+        # Upload to S3 via production API
+        try:
+            upload_url = f"{API_URL}/test-results/upload/"
+            print_status("Uploading to S3", "pending", "Uploading via API...")
+            
+            response = requests.post(
+                upload_url,
+                json=output_data,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            if response.status_code == 201:
+                result = response.json()
+                public_url = result.get('public_url')
+                print_status("Cloud upload", "success", "Uploaded to S3")
+                print_status("Public URL", "success", public_url)
+                return local_path, output_data, public_url
+            else:
+                print_status("Cloud upload", "warning", f"Upload failed: {response.status_code}")
+                return local_path, output_data, None
+        except Exception as upload_error:
+            print_status("Cloud upload", "warning", f"Could not upload: {str(upload_error)}")
+            return local_path, output_data, None
+        
+    except Exception as e:
+        print_status("Save segments", "fail", str(e))
+        return None, None, None
+
 def test_stage3():
     """Test Stage 3: Analysis"""
     
@@ -267,26 +322,29 @@ def test_stage3():
     # Step 6: Verify timing constraints
     print_header("Step 6: Verify Timing Constraints")
     
-    requested_min = 3
-    requested_max = 10
+    requested_max = 300  # 5 minutes hard limit
     
     timing_valid = True
     for i, segment in enumerate(segments, 1):
         duration = segment['duration']
-        if duration < requested_min:
-            print_status(f"Segment {i} duration", "warning", 
-                f"{duration:.2f}s < min {requested_min}s")
+        if duration > requested_max:
+            print_status(f"Segment {i} duration", "fail", 
+                f"{duration:.2f}s > max {requested_max}s (5 min)")
             timing_valid = False
-        elif duration > requested_max:
-            print_status(f"Segment {i} duration", "warning", 
-                f"{duration:.2f}s > max {requested_max}s")
-            timing_valid = False
+        elif duration < 30:
+            print_status(f"Segment {i} duration", "info", 
+                f"{duration:.2f}s (short but OK if content is complete)")
+        elif duration > 240:
+            print_status(f"Segment {i} duration", "info", 
+                f"{duration:.2f}s = {duration/60:.1f} min (long, LLM determined optimal for coherence)")
         else:
             print_status(f"Segment {i} duration", "success", 
-                f"{duration:.2f}s (within {requested_min}-{requested_max}s)")
+                f"{duration:.2f}s = {duration/60:.1f} min")
     
     if not timing_valid:
-        print_status("Timing constraints", "warning", "Some segments outside requested range")
+        print_status("Timing constraints", "fail", "Segments exceed 5-minute maximum")
+    else:
+        print_status("Timing constraints", "success", "All segments within 5-minute limit")
     
     # Summary
     print_header("STAGE 3 RESULTS")
@@ -304,6 +362,20 @@ def test_stage3():
         print(f"   ⏱️  {segment['start_time']:.2f}s - {segment['end_time']:.2f}s ({segment['duration']:.2f}s)")
         print(f"   📝 {segment['description'][:80]}...")
         print(f"   💡 {segment['reasoning'][:80]}...")
+    
+    # Save segments to cloud storage
+    local_path, output_data, public_url = save_segments_to_cloud(segments, job_id)
+    if local_path:
+        print_header("Output File")
+        print_status("Local path", "success", local_path)
+        if public_url:
+            print_status("S3 URL", "success", public_url)
+            print(f"\n📄 Output JSON saved with {num_segments} segments")
+            print(f"   Local: {local_path}")
+            print(f"   Cloud: {public_url}")
+        else:
+            print(f"\n📄 Output JSON saved locally with {num_segments} segments")
+            print(f"   View segments at: {local_path}")
     
     return True
 

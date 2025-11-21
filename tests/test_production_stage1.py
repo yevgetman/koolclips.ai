@@ -37,7 +37,7 @@ def test_api_health():
         return False
 
 
-def create_job(video_path, num_segments=3, min_duration=30, max_duration=60):
+def create_job(video_path, num_segments=3, max_duration=300):
     """Create a new video processing job (Stage 1)"""
     print(f"\n{'='*60}")
     print("STAGE 1 TEST: Create Job")
@@ -45,7 +45,8 @@ def create_job(video_path, num_segments=3, min_duration=30, max_duration=60):
     print(f"API URL: {API_BASE_URL}/jobs/")
     print(f"Video: {video_path}")
     print(f"Segments: {num_segments}")
-    print(f"Duration: {min_duration}-{max_duration}s")
+    print(f"Max duration: {max_duration}s ({max_duration/60:.1f} min)")
+    print(f"Note: LLM decides optimal segment length based on content")
     
     try:
         # Check if video file exists
@@ -62,7 +63,6 @@ def create_job(video_path, num_segments=3, min_duration=30, max_duration=60):
             files = {'video_file': video_file}
             data = {
                 'num_segments': num_segments,
-                'min_duration': min_duration,
                 'max_duration': max_duration
             }
             

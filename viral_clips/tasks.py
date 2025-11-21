@@ -239,12 +239,12 @@ def analyze_transcript(self, job_id):
         job.save()
         
         # Call LLM service
+        # Use max_duration if set, otherwise default to 300 seconds (5 minutes)
         llm = LLMService()
         segments = llm.analyze_transcript(
             job.transcript_json,
             num_segments=job.num_segments,
-            min_duration=job.min_duration,
-            max_duration=job.max_duration
+            max_duration=min(job.max_duration, 300) if job.max_duration else 300
         )
         
         # Create TranscriptSegment objects

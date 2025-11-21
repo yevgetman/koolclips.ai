@@ -25,21 +25,20 @@ class LLMService:
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
     
-    def analyze_transcript(self, transcript_data, num_segments=5, min_duration=60, max_duration=180):
+    def analyze_transcript(self, transcript_data, num_segments=5, max_duration=300):
         """
         Analyze transcript and identify viral segments
         
         Args:
             transcript_data: Transcript data with timestamps
             num_segments: Number of segments to identify
-            min_duration: Minimum segment duration in seconds
-            max_duration: Maximum segment duration in seconds
+            max_duration: Maximum segment duration in seconds (default: 300s = 5 minutes)
             
         Returns:
             list: List of segment dictionaries with title, description, timestamps, etc.
         """
         try:
-            prompt = self._build_prompt(transcript_data, num_segments, min_duration, max_duration)
+            prompt = self._build_prompt(transcript_data, num_segments, max_duration)
             
             if self.provider == 'openai':
                 response = self._call_openai(prompt)
@@ -55,7 +54,7 @@ class LLMService:
             logger.error(f"LLM analysis error: {str(e)}")
             raise Exception(f"Failed to analyze transcript: {str(e)}")
     
-    def _build_prompt(self, transcript_data, num_segments, min_duration, max_duration):
+    def _build_prompt(self, transcript_data, num_segments, max_duration):
         """Build the prompt for LLM analysis"""
         
         # Extract key information without sending full word array
@@ -72,29 +71,27 @@ class LLMService:
         
         transcript_text = json.dumps(simplified_data, indent=2)
         
-        # Calculate target duration and acceptable range
-        min_minutes = min_duration / 60
+        # Convert max duration to minutes for prompt
         max_minutes = max_duration / 60
-        target_minutes = (min_minutes + max_minutes) / 2
-        
-        # Add 50% buffer for content coherence (e.g., 60s target allows 30-90s range)
-        buffer_factor = 0.5
-        flexible_min = target_minutes * (1 - buffer_factor)
-        flexible_max = target_minutes * (1 + buffer_factor)
         
         prompt = f"""Review the attached transcript of a podcast. 
 
 Use the transcript text to choose {num_segments} segments of dialogue that have the most interesting, provocative, and potentially viral content. 
 
 The segments should:
-- PRIORITIZE content coherence and completeness of thought over strict timing
-- Target approximately {target_minutes:.1f} minutes in length when spoken
-- Acceptable range: {flexible_min:.1f} to {flexible_max:.1f} minutes (flexibility for natural topic boundaries)
+- PRIORITIZE content quality, coherence, and completeness of thought
+- Be NO LONGER than {max_minutes:.1f} minutes ({max_duration} seconds) when spoken
+- Have optimal length determined by the natural boundaries of the content itself
+- End at natural stopping points that complete a thought, story, or topic
 - Estimate timing based on typical speech rate (~150 words per minute)
 - Have high viral potential (controversial, insightful, emotional, or surprising)
-- End at natural stopping points rather than cutting mid-thought
 
-IMPORTANT: It's better to have a slightly longer segment that tells a complete story than a shorter segment that feels incomplete or cuts off awkwardly. Prioritize content quality and coherence.
+IMPORTANT GUIDELINES ON LENGTH:
+- You decide the ideal length for each segment based on content quality and coherence
+- Segments can be as short as 30 seconds if the content is punchy and complete
+- Segments can be up to {max_minutes:.1f} minutes if needed to tell a complete story
+- It's better to have a complete, coherent segment than to artificially stretch or cut content
+- Each segment should feel like a standalone piece that makes sense on its own
 
 Return ONLY a valid JSON array with {num_segments} segments in the following format:
 [

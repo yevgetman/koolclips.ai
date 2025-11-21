@@ -45,9 +45,9 @@ class VideoJob(models.Model):
     transcript_json = models.JSONField(blank=True, null=True)
     
     # Configuration
-    num_segments = models.IntegerField(default=5)
-    min_duration = models.IntegerField(default=60, help_text='Minimum segment duration in seconds')
-    max_duration = models.IntegerField(default=180, help_text='Maximum segment duration in seconds')
+    num_segments = models.IntegerField(default=3)
+    min_duration = models.IntegerField(default=60, help_text='(Deprecated) Minimum segment duration in seconds - LLM now decides length based on content')
+    max_duration = models.IntegerField(default=300, help_text='Maximum segment duration in seconds (hard limit: 5 minutes)')
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

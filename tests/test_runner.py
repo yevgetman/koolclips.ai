@@ -51,16 +51,15 @@ class IntegratedTestRunner:
         print(f"Test run ID: {self.run_id}")
         print(f"Output directory: {self.run_dir}")
     
-    def run_complete_pipeline(self, input_file, num_segments=5, min_duration=60, 
-                             max_duration=180, create_clips=False):
+    def run_complete_pipeline(self, input_file, num_segments=3, 
+                             max_duration=300, create_clips=False):
         """
         Run all 4 stages in sequence
         
         Args:
             input_file: Input video or audio file
-            num_segments: Number of segments to identify
-            min_duration: Minimum segment duration
-            max_duration: Maximum segment duration
+            num_segments: Number of segments to identify (default: 3)
+            max_duration: Maximum segment duration in seconds (default: 300s = 5 minutes)
             create_clips: Whether to actually create clips in Stage 4
             
         Returns:
@@ -126,7 +125,6 @@ class IntegratedTestRunner:
         stage3_result = stage3_tester.test_identify_segments(
             transcript,
             num_segments=num_segments,
-            min_duration=min_duration,
             max_duration=max_duration,
             save_output=True
         )
@@ -225,12 +223,10 @@ def main():
                        help='Run all stages')
     parser.add_argument('--stages', nargs='+', type=int,
                        help='Specific stages to run (e.g., 1 2 3)')
-    parser.add_argument('--num-segments', type=int, default=5,
-                       help='Number of segments to identify (default: 5)')
-    parser.add_argument('--min-duration', type=int, default=60,
-                       help='Minimum segment duration in seconds (default: 60)')
-    parser.add_argument('--max-duration', type=int, default=180,
-                       help='Maximum segment duration in seconds (default: 180)')
+    parser.add_argument('--num-segments', type=int, default=3,
+                       help='Number of segments to identify (default: 3)')
+    parser.add_argument('--max-duration', type=int, default=300,
+                       help='Maximum segment duration in seconds (default: 300s = 5 minutes)')
     parser.add_argument('--create-clips', action='store_true',
                        help='Actually create clips in Stage 4 (requires media URL)')
     parser.add_argument('--output-dir', default='./test_outputs',
@@ -252,7 +248,6 @@ def main():
         runner.run_complete_pipeline(
             input_file,
             num_segments=args.num_segments,
-            min_duration=args.min_duration,
             max_duration=args.max_duration,
             create_clips=args.create_clips
         )
@@ -261,7 +256,8 @@ def main():
         print("\nExample usage:")
         print("  python tests/test_runner.py --input video.mp4 --all-stages")
         print("  python tests/test_runner.py --input video.mp4 --all-stages --create-clips")
-        print("  python tests/test_runner.py --input podcast.mp3 --num-segments 3 --max-duration 120")
+        print("  python tests/test_runner.py --input podcast.mp3 --num-segments 3 --max-duration 300")
+        print("\nNote: LLM decides optimal segment length (max 5 minutes)")
 
 
 if __name__ == '__main__':
