@@ -149,18 +149,34 @@ def transcribe_video(self, job_id):
         job.status = 'transcribing'
         job.save()
         
-        # Get audio file - prefer S3 URL, fallback to local path
+        # Get audio file - download from S3 if needed
+        temp_audio_file = None
+        
         if job.extracted_audio_cloudfront_url:
-            audio_path = job.extracted_audio_cloudfront_url
-            logger.info(f"Using audio CloudFront URL: {audio_path}")
+            # Download from CloudFront URL
+            logger.info(f"Downloading audio from CloudFront: {job.extracted_audio_cloudfront_url}")
+            s3_service = S3Service()
+            audio_path = s3_service.download_from_url(job.extracted_audio_cloudfront_url)
+            temp_audio_file = audio_path
+            logger.info(f"Downloaded audio to: {audio_path}")
         elif job.extracted_audio_s3_url:
-            audio_path = job.extracted_audio_s3_url
-            logger.info(f"Using audio S3 URL: {audio_path}")
+            # Download from S3 URL
+            logger.info(f"Downloading audio from S3: {job.extracted_audio_s3_url}")
+            s3_service = S3Service()
+            audio_path = s3_service.download_from_url(job.extracted_audio_s3_url)
+            temp_audio_file = audio_path
+            logger.info(f"Downloaded audio to: {audio_path}")
         elif job.extracted_audio_path:
-            # S3 configured - download from S3
+            # S3 configured - download using S3 key
             if S3Service.is_s3_configured():
                 s3_service = S3Service()
-                audio_path = s3_service.download_file(job.extracted_audio_path)
+                # Get actual S3 key with cube prefix if using Cloudcube
+                if hasattr(job.media_file, 'storage'):
+                    s3_key = job.media_file.storage._normalize_name(job.extracted_audio_path)
+                else:
+                    s3_key = job.extracted_audio_path
+                audio_path = s3_service.download_file(s3_key)
+                temp_audio_file = audio_path
                 logger.info(f"Downloaded audio from S3 to: {audio_path}")
             else:
                 audio_path = job.extracted_audio_path
@@ -169,24 +185,35 @@ def transcribe_video(self, job_id):
             # Fallback to original media file
             if S3Service.is_s3_configured() and job.media_file.name:
                 s3_service = S3Service()
-                audio_path = s3_service.download_file(job.media_file.name)
+                if hasattr(job.media_file, 'storage'):
+                    s3_key = job.media_file.storage._normalize_name(job.media_file.name)
+                else:
+                    s3_key = job.media_file.name
+                audio_path = s3_service.download_file(s3_key)
+                temp_audio_file = audio_path
                 logger.info(f"Downloaded media from S3 to: {audio_path}")
             else:
                 audio_path = job.media_file.path
                 logger.info(f"Using local media file: {audio_path}")
         
-        # Call Eleven Labs service
-        elevenlabs = ElevenLabsService()
-        transcript_data = elevenlabs.transcribe_video(audio_path)
-        
-        # Save transcript data
-        job.transcript_json = transcript_data
-        job.save()
-        
-        logger.info(f"Transcription complete for job {job_id}")
-        
-        # Move to next step: analyze transcript
-        analyze_transcript.delay(job_id)
+        try:
+            # Call Eleven Labs service
+            elevenlabs = ElevenLabsService()
+            transcript_data = elevenlabs.transcribe_video(audio_path)
+            
+            # Save transcript data
+            job.transcript_json = transcript_data
+            job.save()
+            
+            logger.info(f"Transcription complete for job {job_id}")
+            
+            # Move to next step: analyze transcript
+            analyze_transcript.delay(job_id)
+        finally:
+            # Clean up temp audio file
+            if temp_audio_file and os.path.exists(temp_audio_file):
+                os.remove(temp_audio_file)
+                logger.info(f"Cleaned up temp audio file: {temp_audio_file}")
         
     except Exception as e:
         logger.error(f"Transcription failed for job {job_id}: {str(e)}")
