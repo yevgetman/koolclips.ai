@@ -85,16 +85,25 @@ class VideoJobCreateSerializer(serializers.ModelSerializer):
             from .services.s3_service import S3Service
             if S3Service.is_s3_configured():
                 from django.conf import settings
-                s3_key = job.media_file.name
                 
-                # Generate S3 URL
+                # Get actual S3 key (includes cube prefix for Cloudcube)
+                if hasattr(job.media_file, 'storage'):
+                    s3_key = job.media_file.storage._normalize_name(job.media_file.name)
+                else:
+                    s3_key = job.media_file.name
+                
+                # Generate S3 URL with proper cube prefix
                 bucket = settings.AWS_STORAGE_BUCKET_NAME
                 region = settings.AWS_S3_REGION_NAME
                 job.media_file_s3_url = f"https://{bucket}.s3.{region}.amazonaws.com/{s3_key}"
                 
-                # Generate CloudFront URL if configured
+                # For Cloudcube, also set as cloudfront URL (since we don't have CloudFront)
+                # For standalone AWS, use CloudFront domain if configured
                 if settings.AWS_CLOUDFRONT_DOMAIN_INPUT:
                     job.media_file_cloudfront_url = f"https://{settings.AWS_CLOUDFRONT_DOMAIN_INPUT}/{s3_key}"
+                else:
+                    # No CloudFront, use S3 URL directly (for Cloudcube)
+                    job.media_file_cloudfront_url = job.media_file_s3_url
                 
                 job.save()
         

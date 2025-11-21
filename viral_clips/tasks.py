@@ -332,11 +332,21 @@ def process_clip(self, clip_id):
         # Get media CloudFront URL for Shotstack
         media_url = job.get_media_cloudfront_url()
         if not media_url:
-            # Fallback to S3 URL or local URL
+            # Fallback to S3 URL
             if job.media_file_s3_url:
                 media_url = job.media_file_s3_url
+            elif job.media_file:
+                # Use the storage backend's URL method which includes cube prefix
+                try:
+                    media_url = job.media_file.url
+                except:
+                    # If URL generation fails, construct from storage backend
+                    if hasattr(job.media_file, 'storage'):
+                        media_url = job.media_file.storage.url(job.media_file.name)
+                    else:
+                        media_url = job.media_file.url
             else:
-                media_url = job.media_file.url
+                raise ValueError("No media file URL available")
         
         logger.info(f"Using media URL for Shotstack: {media_url}")
         is_audio = job.is_audio_only()
