@@ -1,5 +1,8 @@
 """
 S3 Service for managing file uploads and downloads with AWS S3
+
+Supports both standalone AWS S3 and Cloudcube Heroku add-on.
+Cloudcube automatically detected and configured.
 """
 
 import boto3
@@ -8,6 +11,27 @@ import tempfile
 from django.conf import settings
 from botocore.exceptions import ClientError
 import logging
+
+try:
+    from .cloudcube_adapter import (
+        is_cloudcube_enabled,
+        get_s3_key,
+        get_public_url,
+        strip_cube_prefix
+    )
+except ImportError:
+    # Fallback if cloudcube_adapter not available
+    def is_cloudcube_enabled():
+        return False
+    
+    def get_s3_key(path, public=True):
+        return path
+    
+    def get_public_url(s3_key):
+        return None
+    
+    def strip_cube_prefix(s3_key):
+        return s3_key
 
 logger = logging.getLogger(__name__)
 
@@ -28,25 +52,30 @@ class S3Service:
         self.cloudfront_input = settings.AWS_CLOUDFRONT_DOMAIN_INPUT
         self.cloudfront_output = settings.AWS_CLOUDFRONT_DOMAIN_OUTPUT
     
-    def upload_file(self, file_obj, s3_key, bucket=None, content_type=None):
+    def upload_file(self, file_obj, s3_key, bucket=None, content_type=None, public=True):
         """
-        Upload a file to S3
+        Upload a file to S3 (with automatic Cloudcube support)
         
         Args:
             file_obj: File object or file path to upload
-            s3_key: S3 key (path) for the file
+            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
             bucket: S3 bucket name (defaults to input bucket)
             content_type: MIME type (optional)
+            public: If True, makes file publicly accessible (important for Cloudcube)
         
         Returns:
             dict: {
                 's3_url': Direct S3 URL,
-                'cloudfront_url': CloudFront CDN URL,
-                's3_key': S3 object key,
-                'bucket': Bucket name
+                'cloudfront_url': CloudFront CDN URL or public URL (Cloudcube),
+                's3_key': Full S3 object key (with cube prefix if Cloudcube),
+                'bucket': Bucket name,
+                'public_url': Public URL if using Cloudcube
             }
         """
         bucket = bucket or self.input_bucket
+        
+        # Convert to Cloudcube format if needed (adds cube/public/ prefix)
+        full_s3_key = get_s3_key(s3_key, public=public)
         
         extra_args = {}
         if content_type:
@@ -55,28 +84,41 @@ class S3Service:
         try:
             if isinstance(file_obj, str):
                 # File path provided
-                self.s3_client.upload_file(file_obj, bucket, s3_key, ExtraArgs=extra_args or None)
+                self.s3_client.upload_file(file_obj, bucket, full_s3_key, ExtraArgs=extra_args or None)
             else:
                 # File object provided
-                self.s3_client.upload_fileobj(file_obj, bucket, s3_key, ExtraArgs=extra_args or None)
+                self.s3_client.upload_fileobj(file_obj, bucket, full_s3_key, ExtraArgs=extra_args or None)
             
             # Generate S3 URL
-            s3_url = f"https://{bucket}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
+            s3_url = f"https://{bucket}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{full_s3_key}"
             
-            # Generate CloudFront URL if available
+            # For Cloudcube, generate public URL
+            if is_cloudcube_enabled() and public:
+                public_url = get_public_url(full_s3_key)
+                logger.info(f"Uploaded to Cloudcube: {public_url}")
+                
+                return {
+                    's3_url': s3_url,
+                    'cloudfront_url': public_url,  # Use public URL for Cloudcube
+                    'public_url': public_url,
+                    's3_key': full_s3_key,
+                    'bucket': bucket
+                }
+            
+            # For standalone AWS, use CloudFront if configured
             cloudfront_domain = (
                 self.cloudfront_output 
                 if bucket == self.output_bucket 
                 else self.cloudfront_input
             )
-            cloudfront_url = f"https://{cloudfront_domain}/{s3_key}" if cloudfront_domain else s3_url
+            cloudfront_url = f"https://{cloudfront_domain}/{full_s3_key}" if cloudfront_domain else s3_url
             
             logger.info(f"Uploaded to S3: {s3_url}")
             
             return {
                 's3_url': s3_url,
                 'cloudfront_url': cloudfront_url,
-                's3_key': s3_key,
+                's3_key': full_s3_key,
                 'bucket': bucket
             }
             
@@ -89,10 +131,10 @@ class S3Service:
     
     def download_file(self, s3_key, local_path=None, bucket=None):
         """
-        Download a file from S3
+        Download a file from S3 (with automatic Cloudcube support)
         
         Args:
-            s3_key: S3 key of the file
+            s3_key: S3 key of the file (with or without cube prefix)
             local_path: Local path to save (creates temp file if None)
             bucket: S3 bucket name (defaults to input bucket)
         
@@ -101,9 +143,14 @@ class S3Service:
         """
         bucket = bucket or self.input_bucket
         
+        # S3 key should already have cube prefix if it was uploaded via upload_file
+        # But handle both cases for flexibility
+        
         if local_path is None:
             # Create temp file with appropriate extension
-            suffix = os.path.splitext(s3_key)[1]
+            # Use original path (without cube prefix) for extension
+            original_path = strip_cube_prefix(s3_key)
+            suffix = os.path.splitext(original_path)[1]
             fd, local_path = tempfile.mkstemp(suffix=suffix)
             os.close(fd)
         
