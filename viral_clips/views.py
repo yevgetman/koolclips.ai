@@ -207,12 +207,12 @@ def get_presigned_upload_url(request):
                 'error': 'Unsupported file type. Please upload a video or audio file.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate file size (2GB limit)
-        max_size = 2 * 1024 * 1024 * 1024  # 2GB
+        # Validate file size (5GB limit - sufficient for most use cases)
+        max_size = 5 * 1024 * 1024 * 1024  # 5GB
         if file_size > max_size:
             return Response({
                 'success': False,
-                'error': f'File too large. Maximum size is 2GB. File size: {file_size / 1024 / 1024 / 1024:.2f}GB'
+                'error': f'File too large. Maximum size is 5GB. File size: {file_size / 1024 / 1024 / 1024:.2f}GB'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Generate job ID
