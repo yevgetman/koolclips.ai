@@ -60,8 +60,9 @@ Upload (Video/Audio) → Stage 1: Preprocessing → Stage 2: Transcription → S
    - Generates transcript JSON with word-level timestamps
    - Stores structured data in database
 
-3. **Stage 3 - Segment Identification**: Use LLM to identify viral segments
-   - Analyzes transcript for viral potential
+3. **Stage 3 - Segment Identification**: Use LLM to identify segments
+   - Analyzes transcript for viral potential (default) or custom criteria
+   - Supports custom instructions (e.g., "focus on educational content")
    - LLM decides optimal segment length based on content quality and coherence (max 5 minutes)
    - Generates engaging titles, descriptions, reasoning
    - Creates segments with precise timing
@@ -157,18 +158,27 @@ python manage.py runserver
 #### Submit a Video for Processing
 
 ```bash
-# With video file
+# With video file - default viral content selection
 curl -X POST http://localhost:8000/api/jobs/ \
   -F "media_file=@/path/to/video.mp4" \
   -F "num_segments=3" \
   -F "max_duration=300"
 
+# With custom instructions for segment selection
+curl -X POST http://localhost:8000/api/jobs/ \
+  -F "media_file=@/path/to/video.mp4" \
+  -F "num_segments=3" \
+  -F "max_duration=300" \
+  -F "custom_instructions=Focus on the most educational and insightful moments"
+
 # Note: LLM decides optimal segment length based on content (max 5 minutes)
+# Note: Default criteria is viral content. Use custom_instructions to specify different criteria.
 
 # With audio file (auto-creates video with waveform)
 curl -X POST http://localhost:8000/api/jobs/ \
   -F "media_file=@/path/to/podcast.mp3" \
-  -F "num_segments=5"
+  -F "num_segments=5" \
+  -F "custom_instructions=Select segments that are the most meaningful and thought-provoking"
 ```
 
 Response:
@@ -398,8 +408,9 @@ viral-clips/
 3. **Transcription** (Stage 2): ElevenLabs extracts transcript with word-level timestamps (status: `transcribing`)
    - Model: `scribe_v2`
    - Processing time: ~2 minutes per minute of audio
-4. **Analysis** (Stage 3): LLM analyzes transcript to identify viral segments (status: `analyzing`)
+4. **Analysis** (Stage 3): LLM analyzes transcript to identify segments (status: `analyzing`)
    - Provider: Anthropic Claude or OpenAI
+   - Default: identifies viral segments; supports custom criteria via `custom_instructions`
    - LLM determines optimal segment length based on content quality (max 5 minutes)
    - Processing time: ~15-30 seconds
 5. **Clipping** (Stage 4): Shotstack creates clips based on timestamps (status: `clipping`)
@@ -411,19 +422,20 @@ viral-clips/
 
 ### VideoJob
 - Tracks overall processing status through all 4 stages
-- Stores configuration (num_segments, max_duration)
+- Stores configuration (num_segments, max_duration, custom_instructions)
 - Fields:
   - `status`: Current stage (pending, preprocessing, transcribing, analyzing, clipping, completed, failed)
   - `file_type`: 'video' or 'audio'
   - `num_segments`: Number of segments to identify (default: 3)
   - `max_duration`: Maximum segment duration in seconds (default: 300 = 5 minutes, hard limit)
   - `min_duration`: (Deprecated) LLM now decides optimal length based on content
+  - `custom_instructions`: Optional custom instructions for segment selection (e.g., "focus on educational content")
   - `extracted_audio_path`: Path to extracted audio (for video files)
   - `transcript_json`: Full transcript with word-level timestamps
 - Links to segments and clips
 
 ### TranscriptSegment
-- Identified viral segment
+- Identified segment based on selection criteria (viral by default, or custom)
 - Contains title, description, reasoning
 - Includes precise timestamps
 
@@ -476,6 +488,9 @@ python tests/test_stage2_transcription.py --from-stage1 test_outputs/stage1/prep
 
 # Stage 3: Segment Identification (LLM)
 python tests/test_stage3_segment_identification.py --from-stage2 test_outputs/stage2/transcript.json
+
+# Stage 3 with custom instructions
+python tests/test_stage3_segment_identification.py --from-stage2 test_outputs/stage2/transcript.json --custom-instructions "Focus on the most educational and insightful moments"
 
 # Stage 4: Clip Creation (Shotstack)
 python tests/test_stage4_clip_creation.py --from-stage3 test_outputs/stage3/segments.json

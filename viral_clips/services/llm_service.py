@@ -25,20 +25,21 @@ class LLMService:
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
     
-    def analyze_transcript(self, transcript_data, num_segments=5, max_duration=300):
+    def analyze_transcript(self, transcript_data, num_segments=5, max_duration=300, custom_instructions=None):
         """
-        Analyze transcript and identify viral segments
+        Analyze transcript and identify segments based on criteria
         
         Args:
             transcript_data: Transcript data with timestamps
             num_segments: Number of segments to identify
             max_duration: Maximum segment duration in seconds (default: 300s = 5 minutes)
+            custom_instructions: Optional custom instructions to augment the base prompt
             
         Returns:
             list: List of segment dictionaries with title, description, timestamps, etc.
         """
         try:
-            prompt = self._build_prompt(transcript_data, num_segments, max_duration)
+            prompt = self._build_prompt(transcript_data, num_segments, max_duration, custom_instructions)
             
             if self.provider == 'openai':
                 response = self._call_openai(prompt)
@@ -46,7 +47,7 @@ class LLMService:
                 response = self._call_anthropic(prompt)
             
             segments = self._parse_response(response)
-            logger.info(f"Successfully identified {len(segments)} viral segments")
+            logger.info(f"Successfully identified {len(segments)} segments")
             
             return segments
             
@@ -54,7 +55,7 @@ class LLMService:
             logger.error(f"LLM analysis error: {str(e)}")
             raise Exception(f"Failed to analyze transcript: {str(e)}")
     
-    def _build_prompt(self, transcript_data, num_segments, max_duration):
+    def _build_prompt(self, transcript_data, num_segments, max_duration, custom_instructions=None):
         """Build the prompt for LLM analysis"""
         
         # Extract key information without sending full word array
@@ -74,9 +75,17 @@ class LLMService:
         # Convert max duration to minutes for prompt
         max_minutes = max_duration / 60
         
+        # Build selection criteria based on custom instructions or default to viral content
+        if custom_instructions and custom_instructions.strip():
+            selection_criteria = f"that best match the following criteria:\n\n{custom_instructions.strip()}\n\nAdditionally, ensure the content has high engagement potential."
+            reasoning_field = "Why this segment matches the specified criteria and has engagement potential"
+        else:
+            selection_criteria = "that have the most interesting, provocative, and potentially viral content."
+            reasoning_field = "Why this segment is provocative and potentially viral"
+        
         prompt = f"""Review the attached transcript of a podcast. 
 
-Use the transcript text to choose {num_segments} segments of dialogue that have the most interesting, provocative, and potentially viral content. 
+Use the transcript text to choose {num_segments} segments of dialogue {selection_criteria}
 
 The segments should:
 - PRIORITIZE content quality, coherence, and completeness of thought
@@ -84,7 +93,6 @@ The segments should:
 - Have optimal length determined by the natural boundaries of the content itself
 - End at natural stopping points that complete a thought, story, or topic
 - Estimate timing based on typical speech rate (~150 words per minute)
-- Have high viral potential (controversial, insightful, emotional, or surprising)
 
 IMPORTANT GUIDELINES ON LENGTH:
 - You decide the ideal length for each segment based on content quality and coherence
@@ -98,7 +106,7 @@ Return ONLY a valid JSON array with {num_segments} segments in the following for
   {{
     "title": "Concise headline for the segment",
     "description": "Brief overview of what is discussed",
-    "reasoning": "Why this segment is provocative and potentially viral",
+    "reasoning": "{reasoning_field}",
     "start_time": <estimated_start_time_in_seconds>,
     "end_time": <estimated_end_time_in_seconds>
   }}

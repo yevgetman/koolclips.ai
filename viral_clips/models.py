@@ -48,6 +48,11 @@ class VideoJob(models.Model):
     num_segments = models.IntegerField(default=3)
     min_duration = models.IntegerField(default=60, help_text='(Deprecated) Minimum segment duration in seconds - LLM now decides length based on content')
     max_duration = models.IntegerField(default=300, help_text='Maximum segment duration in seconds (hard limit: 5 minutes)')
+    custom_instructions = models.TextField(
+        blank=True, 
+        null=True, 
+        help_text='Optional custom instructions to augment the LLM prompt (e.g., "focus on educational content" or "select the most meaningful moments")'
+    )
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

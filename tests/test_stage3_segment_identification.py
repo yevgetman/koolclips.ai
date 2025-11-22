@@ -48,21 +48,22 @@ class Stage3Tester:
         print(f"LLM Model: {self.service.model}")
     
     def test_identify_segments(self, transcript_data, num_segments=3, 
-                              max_duration=300, save_output=True):
+                              max_duration=300, custom_instructions=None, save_output=True):
         """
-        Test identifying viral segments from transcript
+        Test segment identification from transcript data
         
         Args:
             transcript_data: Transcript data dict or path to JSON file
             num_segments: Number of segments to identify (default 3)
-            max_duration: Maximum segment duration in seconds (default 300s = 5 minutes, hard limit 300s)
-            save_output: Whether to save segments to JSON file
+            max_duration: Maximum segment duration in seconds (default 300s = 5 minutes)
+            custom_instructions: Optional custom instructions for segment selection
+            save_output: Whether to save output to file
             
         Returns:
-            dict: Test results
+            dict: Test results with segments and validation
         """
         print(f"\n{'='*60}")
-        print(f"STAGE 3 TEST: Identify Viral Segments")
+        print(f"STAGE 3 TEST: Identify Segments")
         print(f"{'='*60}")
         
         # Validate parameters
@@ -76,8 +77,11 @@ class Stage3Tester:
         
         print(f"Parameters:")
         print(f"  Number of segments: {num_segments}")
-        print(f"  Max duration: {max_duration}s ({max_duration/60:.1f} min)")
-        print(f"  Note: LLM decides optimal segment length based on content quality and coherence")
+        print(f"  Max duration: {max_duration}s ({max_duration/60:.2f} min)")
+        if custom_instructions:
+            print(f"  Custom criteria: {custom_instructions}")
+        else:
+            print(f"  Criteria: Viral content (default)")
         
         try:
             # Load transcript if it's a file path
@@ -101,7 +105,8 @@ class Stage3Tester:
             segments = self.service.analyze_transcript(
                 transcript_data,
                 num_segments=num_segments,
-                max_duration=max_duration
+                max_duration=max_duration,
+                custom_instructions=custom_instructions
             )
             
             end_time = datetime.now()
@@ -249,7 +254,7 @@ class Stage3Tester:
         return output_path
     
     def test_from_stage2_output(self, stage2_json_path, num_segments=3, 
-                               max_duration=300):
+                               max_duration=300, custom_instructions=None):
         """
         Test using output from Stage 2
         
@@ -257,6 +262,7 @@ class Stage3Tester:
             stage2_json_path: Path to Stage 2 output JSON
             num_segments: Number of segments to identify (default 3)
             max_duration: Maximum segment duration in seconds (default 300s = 5 minutes)
+            custom_instructions: Optional custom instructions for segment selection
             
         Returns:
             dict: Test results
@@ -280,6 +286,7 @@ class Stage3Tester:
                 transcript,
                 num_segments=num_segments,
                 max_duration=max_duration,
+                custom_instructions=custom_instructions,
                 save_output=True
             )
             
@@ -327,6 +334,8 @@ def main():
                        help='Number of segments to identify (max 5, default: 3)')
     parser.add_argument('--max-duration', type=int, default=300,
                        help='Maximum segment duration in seconds (max 300s = 5 minutes, default: 300)')
+    parser.add_argument('--custom-instructions', type=str, default=None,
+                       help='Custom instructions for segment selection (e.g., "focus on educational content")')
     parser.add_argument('--output-dir', default='./test_outputs/stage3',
                        help='Output directory for test results')
     
@@ -340,13 +349,15 @@ def main():
         tester.test_from_stage2_output(
             args.from_stage2,
             num_segments=args.num_segments,
-            max_duration=args.max_duration
+            max_duration=args.max_duration,
+            custom_instructions=args.custom_instructions
         )
     elif args.transcript_json:
         tester.test_identify_segments(
             args.transcript_json,
             num_segments=args.num_segments,
             max_duration=args.max_duration,
+            custom_instructions=args.custom_instructions,
             save_output=True
         )
     else:
@@ -355,7 +366,9 @@ def main():
         print("  python tests/test_stage3_segment_identification.py transcript.json")
         print("  python tests/test_stage3_segment_identification.py --from-stage2 test_outputs/stage2/transcript.json")
         print("  python tests/test_stage3_segment_identification.py transcript.json --num-segments 3 --max-duration 300")
+        print('  python tests/test_stage3_segment_identification.py transcript.json --custom-instructions "focus on educational moments"')
         print("\nNote: LLM decides optimal segment length based on content quality (max 5 minutes)")
+        print("      Default criteria: viral content. Use --custom-instructions to specify different criteria.")
 
 
 if __name__ == '__main__':

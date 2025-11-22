@@ -46,8 +46,10 @@ class VideoJobSerializer(serializers.ModelSerializer):
     class Meta:
         model = VideoJob
         fields = [
-            'id', 'media_file', 'file_type', 'status', 'error_message',
-            'num_segments', 'min_duration', 'max_duration',
+            'id', 'file_type', 'media_file', 'media_file_s3_url', 'media_file_cloudfront_url',
+            'extracted_audio_s3_url', 'extracted_audio_cloudfront_url', 
+            'status', 'error_message',
+            'num_segments', 'min_duration', 'max_duration', 'custom_instructions',
             'extracted_audio_path', 'transcript_json', 'segments',
             'created_at', 'updated_at', 'completed_at'
         ]
@@ -69,10 +71,16 @@ class VideoJobCreateSerializer(serializers.ModelSerializer):
         default=300,
         help_text='Maximum segment duration in seconds (default: 300s = 5 minutes, hard limit: 5 minutes)'
     )
+    custom_instructions = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text='Optional custom instructions for segment selection (e.g., "focus on educational content" or "select the most meaningful moments")'
+    )
     
     class Meta:
         model = VideoJob
-        fields = ['media_file', 'num_segments', 'min_duration', 'max_duration']
+        fields = ['media_file', 'num_segments', 'min_duration', 'max_duration', 'custom_instructions']
     
     def validate_media_file(self, value):
         """Validate the uploaded media file"""

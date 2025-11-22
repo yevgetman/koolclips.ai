@@ -244,7 +244,8 @@ def analyze_transcript(self, job_id):
         segments = llm.analyze_transcript(
             job.transcript_json,
             num_segments=job.num_segments,
-            max_duration=min(job.max_duration, 300) if job.max_duration else 300
+            max_duration=min(job.max_duration, 300) if job.max_duration else 300,
+            custom_instructions=job.custom_instructions
         )
         
         # Create TranscriptSegment objects
