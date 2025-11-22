@@ -249,6 +249,287 @@ def get_presigned_upload_url(request):
 
 @api_view(['POST'])
 @parser_classes([JSONParser])
+def initiate_multipart_upload(request):
+    """
+    Initiate a multipart upload for large files
+    
+    POST /api/upload/multipart/initiate/
+    Body: {
+        "filename": "large_video.mp4",
+        "content_type": "video/mp4",
+        "file_size": 5000000000,  # in bytes
+        "part_size": 10485760  # optional, default 100MB
+    }
+    
+    Returns: {
+        "upload_id": "...",
+        "s3_key": "...",
+        "job_id": "...",
+        "file_type": "video",
+        "num_parts": 50,
+        "part_size": 10485760
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        filename = request.data.get('filename')
+        content_type = request.data.get('content_type')
+        file_size = request.data.get('file_size', 0)
+        part_size = request.data.get('part_size', 100 * 1024 * 1024)  # Default 100MB per part
+        
+        if not filename:
+            return Response({
+                'success': False,
+                'error': 'filename is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file type
+        file_type = detect_file_type(filename)
+        if file_type == 'unknown':
+            return Response({
+                'success': False,
+                'error': 'Unsupported file type. Please upload a video or audio file.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file size (5GB limit)
+        max_size = 5 * 1024 * 1024 * 1024  # 5GB
+        if file_size > max_size:
+            return Response({
+                'success': False,
+                'error': f'File too large. Maximum size is 5GB. File size: {file_size / 1024 / 1024 / 1024:.2f}GB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calculate number of parts
+        num_parts = (file_size + part_size - 1) // part_size  # Ceiling division
+        
+        # Validate part size (min 5MB for S3)
+        if part_size < 5 * 1024 * 1024:
+            return Response({
+                'success': False,
+                'error': 'Part size must be at least 5MB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+        
+        # Generate S3 key
+        s3_key = f"uploads/direct/{job_id}/{filename}"
+        
+        # Initialize multipart upload
+        s3_service = S3Service()
+        multipart_data = s3_service.initiate_multipart_upload(
+            s3_key=s3_key,
+            content_type=content_type,
+            public=True
+        )
+        
+        return Response({
+            'success': True,
+            'upload_id': multipart_data['upload_id'],
+            's3_key': multipart_data['s3_key'],
+            'job_id': job_id,
+            'file_type': file_type,
+            'num_parts': num_parts,
+            'part_size': part_size
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def get_multipart_upload_urls(request):
+    """
+    Get presigned URLs for uploading parts
+    
+    POST /api/upload/multipart/urls/
+    Body: {
+        "upload_id": "...",
+        "s3_key": "...",
+        "part_numbers": [1, 2, 3, ...]  # list of part numbers to get URLs for
+    }
+    
+    Returns: {
+        "urls": [
+            {"part_number": 1, "url": "https://..."},
+            {"part_number": 2, "url": "https://..."},
+            ...
+        ]
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        upload_id = request.data.get('upload_id')
+        s3_key = request.data.get('s3_key')
+        part_numbers = request.data.get('part_numbers', [])
+        
+        if not all([upload_id, s3_key, part_numbers]):
+            return Response({
+                'success': False,
+                'error': 'upload_id, s3_key, and part_numbers are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate presigned URLs for requested parts
+        s3_service = S3Service()
+        
+        # Generate URLs batch (more efficient than one at a time)
+        max_part = max(part_numbers)
+        all_urls = s3_service.generate_multipart_presigned_urls(
+            s3_key=s3_key,
+            upload_id=upload_id,
+            num_parts=max_part,
+            expiration=3600
+        )
+        
+        # Filter to only requested part numbers
+        urls = [url for url in all_urls if url['part_number'] in part_numbers]
+        
+        return Response({
+            'success': True,
+            'urls': urls
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def complete_multipart_upload(request):
+    """
+    Complete a multipart upload after all parts are uploaded
+    
+    POST /api/upload/multipart/complete/
+    Body: {
+        "upload_id": "...",
+        "s3_key": "...",
+        "parts": [
+            {"PartNumber": 1, "ETag": "..."},
+            {"PartNumber": 2, "ETag": "..."},
+            ...
+        ]
+    }
+    
+    Returns: {
+        "success": true,
+        "location": "https://..."
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        upload_id = request.data.get('upload_id')
+        s3_key = request.data.get('s3_key')
+        parts = request.data.get('parts', [])
+        
+        if not all([upload_id, s3_key, parts]):
+            return Response({
+                'success': False,
+                'error': 'upload_id, s3_key, and parts are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Complete multipart upload
+        s3_service = S3Service()
+        result = s3_service.complete_multipart_upload(
+            s3_key=s3_key,
+            upload_id=upload_id,
+            parts=parts
+        )
+        
+        return Response({
+            'success': True,
+            'location': result.get('Location', ''),
+            'etag': result.get('ETag', '')
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def abort_multipart_upload(request):
+    """
+    Abort a multipart upload and clean up
+    
+    POST /api/upload/multipart/abort/
+    Body: {
+        "upload_id": "...",
+        "s3_key": "..."
+    }
+    
+    Returns: {
+        "success": true
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        upload_id = request.data.get('upload_id')
+        s3_key = request.data.get('s3_key')
+        
+        if not all([upload_id, s3_key]):
+            return Response({
+                'success': False,
+                'error': 'upload_id and s3_key are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Abort multipart upload
+        s3_service = S3Service()
+        s3_service.abort_multipart_upload(
+            s3_key=s3_key,
+            upload_id=upload_id
+        )
+        
+        return Response({
+            'success': True
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
 def create_job_from_s3(request):
     """
     Create a job after file has been uploaded to S3 via presigned URL
