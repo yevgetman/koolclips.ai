@@ -15,7 +15,10 @@ import requests
 import os
 import argparse
 import mimetypes
+import sys
+import time
 from pathlib import Path
+from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 
 
 def get_presigned_url(api_base_url, filename, file_size, content_type):
@@ -59,36 +62,127 @@ def get_presigned_url(api_base_url, filename, file_size, content_type):
     return result
 
 
+class ProgressTracker:
+    """Track upload progress with visual feedback"""
+    
+    def __init__(self, total_size):
+        self.total_size = total_size
+        self.bytes_uploaded = 0
+        self.start_time = time.time()
+        self.last_print_time = time.time()
+        
+    def update(self, bytes_uploaded):
+        """Update progress and print if enough time has passed"""
+        self.bytes_uploaded = bytes_uploaded
+        
+        current_time = time.time()
+        # Update display every 0.3 seconds
+        if current_time - self.last_print_time >= 0.3:
+            self._print_progress()
+            self.last_print_time = current_time
+    
+    def _print_progress(self):
+        """Print upload progress bar"""
+        if self.total_size == 0:
+            return
+        
+        percent = (self.bytes_uploaded / self.total_size) * 100
+        elapsed = time.time() - self.start_time
+        
+        # Calculate speed and ETA
+        if elapsed > 0 and self.bytes_uploaded > 0:
+            speed_mbps = (self.bytes_uploaded / elapsed) / (1024 * 1024)
+            remaining_bytes = self.total_size - self.bytes_uploaded
+            eta_seconds = remaining_bytes / (self.bytes_uploaded / elapsed)
+        else:
+            speed_mbps = 0
+            eta_seconds = 0
+        
+        # Create progress bar
+        bar_width = 40
+        filled = int(bar_width * self.bytes_uploaded / self.total_size)
+        bar = '█' * filled + '░' * (bar_width - filled)
+        
+        # Format sizes
+        uploaded_mb = self.bytes_uploaded / (1024 * 1024)
+        total_mb = self.total_size / (1024 * 1024)
+        
+        # Print progress (overwrite same line)
+        sys.stdout.write(f'\r  [{bar}] {percent:.1f}% | {uploaded_mb:.1f}/{total_mb:.1f} MB | {speed_mbps:.2f} MB/s | ETA: {eta_seconds:.0f}s ')
+        sys.stdout.flush()
+    
+    def finish(self):
+        """Print final progress"""
+        self._print_progress()
+        print()  # New line after progress bar
+
+
 def upload_to_s3(presigned_data, file_path):
     """
-    Step 2: Upload file directly to S3 using presigned URL
+    Step 2: Upload file directly to S3 using presigned URL with progress tracking
     """
     print(f"\n{'='*70}")
     print(f"STEP 2: Uploading file to S3")
     print(f"{'='*70}")
     print(f"Upload URL: {presigned_data['upload_url'][:80]}...")
-    print(f"Starting upload...")
     
-    # Prepare the multipart form data
-    with open(file_path, 'rb') as f:
-        files = {'file': f}
-        fields = presigned_data['upload_fields']
+    file_size = os.path.getsize(file_path)
+    print(f"File size: {file_size / (1024 * 1024):.2f} MB")
+    print(f"\nUploading (this may take several minutes for large files)...")
+    
+    # Create progress tracker
+    progress = ProgressTracker(file_size)
+    
+    def progress_callback(monitor):
+        """Callback for upload progress"""
+        progress.update(monitor.bytes_read)
+    
+    try:
+        # Prepare multipart form data with streaming and progress tracking
+        with open(file_path, 'rb') as f:
+            # Prepare fields for S3 upload
+            fields = presigned_data['upload_fields'].copy()
+            fields['file'] = ('file', f)
+            
+            # Create multipart encoder with progress monitoring
+            encoder = MultipartEncoder(fields=fields)
+            monitor = MultipartEncoderMonitor(encoder, progress_callback)
+            
+            # Upload to S3 with streaming
+            start_time = time.time()
+            response = requests.post(
+                presigned_data['upload_url'],
+                data=monitor,
+                headers={'Content-Type': monitor.content_type},
+                timeout=1800  # 30 minutes for very large files
+            )
+            elapsed = time.time() - start_time
         
-        # Upload to S3
-        response = requests.post(
-            presigned_data['upload_url'],
-            data=fields,
-            files=files,
-            timeout=600  # 10 minutes for large files
-        )
-    
-    if response.status_code not in [200, 201, 204]:
-        print(f"\n✗ Upload failed: {response.status_code}")
-        print(response.text)
+        # Finish progress display
+        progress.finish()
+        
+        if response.status_code not in [200, 201, 204]:
+            print(f"\n✗ Upload failed: {response.status_code}")
+            print(f"Response: {response.text[:500]}")
+            return False
+        
+        print(f"\n✓ File uploaded successfully to S3!")
+        print(f"  Total time: {elapsed:.1f} seconds ({elapsed/60:.1f} minutes)")
+        if elapsed > 0:
+            print(f"  Average speed: {(file_size / elapsed) / (1024 * 1024):.2f} MB/s")
+        return True
+        
+    except requests.exceptions.Timeout:
+        print(f"\n\n✗ Upload timed out after 30 minutes")
         return False
-    
-    print(f"\n✓ File uploaded successfully to S3!")
-    return True
+    except ImportError:
+        print(f"\n\n✗ Missing required library. Install with: pip install requests-toolbelt")
+        return False
+    except Exception as e:
+        print(f"\n\n✗ Upload error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def create_job(api_base_url, presigned_data, num_segments=5):
