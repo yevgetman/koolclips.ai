@@ -455,6 +455,18 @@ def check_render_status(self, clip_id):
             
             logger.info(f"Clip {clip_id} completed: {clip.video_url}")
             
+            # Check if all clips for this job are complete, and if so, cleanup S3 files
+            try:
+                job = clip.segment.video_job
+                total_clips = job.segments.filter(clip__isnull=False).count()
+                completed_clips = job.segments.filter(clip__status='completed').count()
+                
+                if total_clips > 0 and completed_clips == total_clips:
+                    logger.info(f"All clips completed for job {job.id}. Initiating S3 cleanup...")
+                    cleanup_job_files.delay(str(job.id))
+            except Exception as cleanup_check_err:
+                logger.error(f"Error checking for cleanup: {str(cleanup_check_err)}")
+            
         elif status['status'] == 'failed':
             clip.status = 'failed'
             clip.error_message = status.get('error', 'Render failed')
@@ -470,3 +482,37 @@ def check_render_status(self, clip_id):
     except Exception as e:
         logger.error(f"Error checking render status for {clip_id}: {str(e)}")
         raise self.retry(exc=e, countdown=10)
+
+
+@shared_task
+def cleanup_job_files(job_id):
+    """
+    Clean up S3 files for a job after all clips are completed
+    
+    This removes the original media file and extracted audio from S3 to save storage costs.
+    Clips are preserved as they are the final output.
+    
+    Args:
+        job_id: UUID of the VideoJob
+    """
+    try:
+        job = VideoJob.objects.get(id=job_id)
+        logger.info(f"Starting S3 cleanup for job {job_id}")
+        
+        # Check if S3 is configured
+        if not S3Service.is_s3_configured():
+            logger.warning(f"S3 not configured, skipping cleanup for job {job_id}")
+            return
+        
+        # Initialize S3 service
+        s3_service = S3Service()
+        
+        # Clean up job files
+        s3_service.cleanup_job_files(job)
+        
+        logger.info(f"Successfully cleaned up S3 files for job {job_id}")
+        
+    except VideoJob.DoesNotExist:
+        logger.error(f"Job {job_id} not found for cleanup")
+    except Exception as e:
+        logger.error(f"Error cleaning up S3 files for job {job_id}: {str(e)}")

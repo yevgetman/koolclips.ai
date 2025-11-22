@@ -5,6 +5,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 import json
+import uuid
 from datetime import datetime
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
@@ -13,6 +14,7 @@ from .serializers import (
     TranscriptSegmentSerializer, ClippedVideoSerializer
 )
 from .services.s3_service import S3Service
+from .utils import detect_file_type
 
 
 class VideoJobViewSet(viewsets.ModelViewSet):
@@ -156,6 +158,177 @@ class ClippedVideoViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(segment__video_job_id=job_id)
         
         return queryset
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def get_presigned_upload_url(request):
+    """
+    Get a presigned S3 URL for direct file upload
+    
+    POST /api/upload/presigned-url/
+    Body: {
+        "filename": "video.mp4",
+        "content_type": "video/mp4",
+        "file_size": 1234567890  # in bytes
+    }
+    
+    Returns: {
+        "upload_url": "https://...",
+        "upload_fields": {...},
+        "s3_key": "uploads/...",
+        "job_id": "uuid"
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured. Cannot upload files.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        filename = request.data.get('filename')
+        content_type = request.data.get('content_type')
+        file_size = request.data.get('file_size', 0)
+        
+        if not filename:
+            return Response({
+                'success': False,
+                'error': 'filename is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file type
+        file_type = detect_file_type(filename)
+        if file_type == 'unknown':
+            return Response({
+                'success': False,
+                'error': 'Unsupported file type. Please upload a video or audio file.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate file size (2GB limit)
+        max_size = 2 * 1024 * 1024 * 1024  # 2GB
+        if file_size > max_size:
+            return Response({
+                'success': False,
+                'error': f'File too large. Maximum size is 2GB. File size: {file_size / 1024 / 1024 / 1024:.2f}GB'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+        
+        # Generate S3 key
+        s3_key = f"uploads/direct/{job_id}/{filename}"
+        
+        # Generate presigned upload URL
+        s3_service = S3Service()
+        presigned_data = s3_service.generate_presigned_upload_url(
+            s3_key=s3_key,
+            content_type=content_type,
+            expiration=3600,  # 1 hour
+            public=True
+        )
+        
+        return Response({
+            'success': True,
+            'upload_url': presigned_data['url'],
+            'upload_fields': presigned_data['fields'],
+            's3_key': presigned_data['s3_key'],
+            'job_id': job_id,
+            'file_type': file_type,
+            'expires_in': 3600  # seconds
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def create_job_from_s3(request):
+    """
+    Create a job after file has been uploaded to S3 via presigned URL
+    
+    POST /api/upload/create-job/
+    Body: {
+        "job_id": "uuid",
+        "s3_key": "uploads/direct/...",
+        "file_type": "video",
+        "num_segments": 5,
+        "min_duration": 60,
+        "max_duration": 300,
+        "custom_instructions": "optional"
+    }
+    
+    Returns: VideoJob details
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        job_id = request.data.get('job_id')
+        s3_key = request.data.get('s3_key')
+        file_type = request.data.get('file_type')
+        num_segments = request.data.get('num_segments', 5)
+        min_duration = request.data.get('min_duration', 60)
+        max_duration = request.data.get('max_duration', 300)
+        custom_instructions = request.data.get('custom_instructions', '')
+        
+        if not all([job_id, s3_key, file_type]):
+            return Response({
+                'success': False,
+                'error': 'job_id, s3_key, and file_type are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify file exists in S3
+        s3_service = S3Service()
+        if not s3_service.file_exists(s3_key):
+            return Response({
+                'success': False,
+                'error': 'File not found in S3. Upload may have failed.'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Create job
+        job = VideoJob.objects.create(
+            id=job_id,
+            file_type=file_type,
+            num_segments=num_segments,
+            min_duration=min_duration,
+            max_duration=max_duration,
+            custom_instructions=custom_instructions or None
+        )
+        
+        # Generate S3 URLs
+        job.media_file_s3_url = s3_service.get_public_url_from_key(s3_key)
+        job.media_file_cloudfront_url = job.media_file_s3_url
+        
+        # Store the S3 key so we can access it later
+        # We'll use a custom field to store just the key path
+        job.media_file.name = s3_key
+        job.save()
+        
+        # Trigger processing pipeline
+        from .tasks import process_video_job
+        process_video_job.delay(str(job.id))
+        
+        # Return job details
+        serializer = VideoJobSerializer(job)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])

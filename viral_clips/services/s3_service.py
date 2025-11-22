@@ -250,7 +250,7 @@ class S3Service:
     
     def generate_presigned_url(self, s3_key, bucket=None, expiration=3600):
         """
-        Generate a presigned URL for temporary access
+        Generate a presigned URL for temporary access (download)
         
         Args:
             s3_key: S3 key of the file
@@ -274,6 +274,66 @@ class S3Service:
             raise
         except Exception as e:
             logger.error(f"Unexpected error generating presigned URL: {str(e)}")
+            raise
+    
+    def generate_presigned_upload_url(self, s3_key, bucket=None, content_type=None, expiration=3600, public=True):
+        """
+        Generate a presigned URL for uploading files directly to S3
+        This allows clients to upload large files without going through the server
+        
+        Args:
+            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
+            bucket: S3 bucket name (defaults to input bucket)
+            content_type: MIME type (optional)
+            expiration: URL expiration time in seconds (default 3600 = 1 hour)
+            public: If True, makes file publicly accessible (important for Cloudcube)
+        
+        Returns:
+            dict: {
+                'url': Presigned POST URL,
+                'fields': Form fields to include in the POST request,
+                's3_key': Full S3 key (with cube prefix if using Cloudcube),
+                'bucket': Bucket name
+            }
+        """
+        bucket = bucket or self.input_bucket
+        
+        # Convert to Cloudcube format if needed (adds cube/public/ prefix)
+        full_s3_key = get_s3_key(s3_key, public=public)
+        
+        # Prepare conditions for presigned POST
+        conditions = [
+            {'bucket': bucket},
+            {'key': full_s3_key}
+        ]
+        
+        fields = {'key': full_s3_key}
+        
+        if content_type:
+            conditions.append({'Content-Type': content_type})
+            fields['Content-Type'] = content_type
+        
+        try:
+            # Generate presigned POST
+            response = self.s3_client.generate_presigned_post(
+                Bucket=bucket,
+                Key=full_s3_key,
+                Fields=fields,
+                Conditions=conditions,
+                ExpiresIn=expiration
+            )
+            
+            response['s3_key'] = full_s3_key
+            response['bucket'] = bucket
+            
+            logger.info(f"Generated presigned upload URL for: {full_s3_key}")
+            return response
+            
+        except ClientError as e:
+            logger.error(f"Failed to generate presigned upload URL: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error generating presigned upload URL: {str(e)}")
             raise
     
     def file_exists(self, s3_key, bucket=None):
@@ -309,6 +369,65 @@ class S3Service:
         parts = url.split('/')
         # Key is everything after the domain
         return '/'.join(parts[1:])
+    
+    def cleanup_job_files(self, job):
+        """
+        Clean up all S3 files associated with a job
+        Should be called after Stage 4 completes successfully
+        
+        Args:
+            job: VideoJob instance
+        """
+        files_to_delete = []
+        
+        # Collect all S3 keys to delete
+        if job.media_file and job.media_file.name:
+            # Get the actual S3 key (with cube prefix if needed)
+            if hasattr(job.media_file, 'storage'):
+                s3_key = job.media_file.storage._normalize_name(job.media_file.name)
+            else:
+                s3_key = job.media_file.name
+            files_to_delete.append(s3_key)
+        
+        if job.extracted_audio_path:
+            # Extracted audio file
+            if hasattr(job.media_file, 'storage'):
+                s3_key = job.media_file.storage._normalize_name(job.extracted_audio_path)
+            else:
+                s3_key = job.extracted_audio_path
+            files_to_delete.append(s3_key)
+        
+        # Delete each file
+        for s3_key in files_to_delete:
+            try:
+                self.delete_file(s3_key)
+                logger.info(f"Cleaned up S3 file for job {job.id}: {s3_key}")
+            except Exception as e:
+                logger.error(f"Failed to delete S3 file {s3_key} for job {job.id}: {str(e)}")
+    
+    def get_public_url_from_key(self, s3_key, bucket=None):
+        """
+        Get the public URL for an S3 key
+        
+        Args:
+            s3_key: S3 key of the file
+            bucket: S3 bucket name (defaults to input bucket)
+        
+        Returns:
+            str: Public URL
+        """
+        bucket = bucket or self.input_bucket
+        
+        # For Cloudcube, use the public URL
+        if is_cloudcube_enabled():
+            return get_public_url(s3_key)
+        
+        # For standalone AWS with CloudFront
+        if self.cloudfront_input:
+            return f"https://{self.cloudfront_input}/{s3_key}"
+        
+        # Direct S3 URL
+        return f"https://{bucket}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
     
     @staticmethod
     def is_s3_configured():

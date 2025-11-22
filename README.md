@@ -17,10 +17,15 @@ This tool uses a 4-stage pipeline with AI and automation:
 ### 🎵 **NEW: Audio File Support!**
 Upload audio files directly (MP3, WAV, M4A, etc.) for faster processing and smaller file sizes. The tool will automatically create video clips with waveform visualizations. [Learn more](AUDIO_SUPPORT.md)
 
+### 📦 **NEW: Large File Upload Support!**
+Upload videos up to 2GB using presigned S3 URLs that bypass Heroku's timeout limits. Automatic cleanup removes temporary files after processing completes. [Learn more](docs/LARGE_FILE_UPLOAD.md)
+
 ## Features
 
 - 🎥 **Automated Video Processing**: Upload a video and get viral clips automatically
 - 🎵 **Audio File Support**: Upload audio files (MP3, WAV, etc.) with automatic waveform visualization
+- 📦 **Large File Support**: Direct S3 uploads for files up to 2GB (bypasses Heroku timeout)
+- 🧹 **Automatic Cleanup**: Temporary files removed after processing to save storage
 - 🤖 **AI-Powered Analysis**: Uses GPT-4 or Claude to identify engaging content
 - 📝 **Transcript Extraction**: Accurate timestamps for precise clipping
 - 🎬 **Professional Clips**: High-quality video clips ready for social media

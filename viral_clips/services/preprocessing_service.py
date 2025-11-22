@@ -35,7 +35,7 @@ class PreprocessingService:
                 ['ffmpeg', '-version'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=30  # Increased timeout to 30 seconds
             )
             if result.returncode != 0:
                 raise RuntimeError("ffmpeg is not functioning properly")
@@ -46,7 +46,9 @@ class PreprocessingService:
                 "https://ffmpeg.org/download.html"
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError("ffmpeg check timed out")
+            # If check times out, just log warning and continue
+            logger.warning("ffmpeg check timed out, but will proceed anyway")
+            pass
     
     def process_media_file(self, input_path):
         """
