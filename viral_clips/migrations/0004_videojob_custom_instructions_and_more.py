@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('viral_clips', '0003_alter_videojob_max_duration_and_more'),
+        ('viral_clips', '0003_add_s3_cloudfront_urls'),
     ]
 
     operations = [
