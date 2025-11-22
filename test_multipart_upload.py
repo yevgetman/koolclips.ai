@@ -371,9 +371,9 @@ def main():
     print("MULTIPART UPLOAD TEST - FOR LARGE FILES UP TO 5GB")
     print("="*70)
     print("OPTIMIZATIONS ENABLED:")
-    print("  • S3 Transfer Acceleration (2-5x faster)")
-    print("  • Large part size (200MB default)")
-    print("  • Parallel uploads (reduce with --workers 1 if errors occur)")
+    print(f"  • Large part size ({args.part_size}MB, reduces overhead)")
+    print(f"  • Parallel uploads ({args.workers} workers)")
+    print("  • Multipart chunking (avoids timeouts)")
     print("="*70)
     
     # Create uploader

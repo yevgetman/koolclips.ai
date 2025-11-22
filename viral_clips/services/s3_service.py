@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 class S3Service:
     """Service for managing S3 uploads and downloads"""
     
-    def __init__(self, use_accelerate=True):
+    def __init__(self, use_accelerate=False):
         """
         Initialize S3Service with AWS credentials from environment
         
