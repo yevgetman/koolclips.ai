@@ -282,7 +282,7 @@ def initiate_multipart_upload(request):
         filename = request.data.get('filename')
         content_type = request.data.get('content_type')
         file_size = request.data.get('file_size', 0)
-        part_size = request.data.get('part_size', 100 * 1024 * 1024)  # Default 100MB per part
+        part_size = request.data.get('part_size', 200 * 1024 * 1024)  # Default 200MB per part (faster uploads)
         
         if not filename:
             return Response({

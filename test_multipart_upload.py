@@ -22,12 +22,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class MultipartUploader:
     """Handle multipart uploads with progress tracking"""
     
-    def __init__(self, api_base_url, file_path, part_size=100*1024*1024):
+    def __init__(self, api_base_url, file_path, part_size=200*1024*1024):
         """
         Args:
             api_base_url: Base URL of the API
             file_path: Path to file to upload
-            part_size: Size of each part in bytes (default 100MB)
+            part_size: Size of each part in bytes (default 200MB for faster uploads)
         """
         self.api_base_url = api_base_url.rstrip('/')
         self.file_path = file_path
@@ -353,8 +353,8 @@ def main():
     parser.add_argument('--file', required=True, help='Path to file to upload')
     parser.add_argument('--url', required=True, help='API base URL')
     parser.add_argument('--segments', type=int, default=5, help='Number of segments')
-    parser.add_argument('--part-size', type=int, default=100, help='Part size in MB (default: 100)')
-    parser.add_argument('--workers', type=int, default=10, help='Number of parallel upload workers (default: 10)')
+    parser.add_argument('--part-size', type=int, default=200, help='Part size in MB (default: 200, optimized for speed)')
+    parser.add_argument('--workers', type=int, default=3, help='Number of parallel upload workers (default: 3, use 1 for large files)')
     
     args = parser.parse_args()
     
@@ -369,6 +369,11 @@ def main():
     
     print("\n" + "="*70)
     print("MULTIPART UPLOAD TEST - FOR LARGE FILES UP TO 5GB")
+    print("="*70)
+    print("OPTIMIZATIONS ENABLED:")
+    print("  • S3 Transfer Acceleration (2-5x faster)")
+    print("  • Large part size (200MB default)")
+    print("  • Parallel uploads (reduce with --workers 1 if errors occur)")
     print("="*70)
     
     # Create uploader

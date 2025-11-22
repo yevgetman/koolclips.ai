@@ -39,16 +39,34 @@ logger = logging.getLogger(__name__)
 class S3Service:
     """Service for managing S3 uploads and downloads"""
     
-    def __init__(self):
-        """Initialize S3 client with credentials from settings"""
+    def __init__(self, use_accelerate=True):
+        """
+        Initialize S3Service with AWS credentials from environment
+        
+        Args:
+            use_accelerate: If True, use S3 Transfer Acceleration for faster uploads
+        """
+        config = None
+        if use_accelerate:
+            # Enable S3 Transfer Acceleration for faster uploads
+            from botocore.config import Config
+            config = Config(
+                s3={'use_accelerate_endpoint': True}
+            )
+        
         self.s3_client = boto3.client(
             's3',
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             region_name=settings.AWS_S3_REGION_NAME,
+            config=config
         )
         self.input_bucket = settings.AWS_STORAGE_BUCKET_NAME
-        self.output_bucket = settings.AWS_S3_BUCKET_OUTPUT
+        self.output_bucket = settings.AWS_STORAGE_BUCKET_NAME
+        self.use_accelerate = use_accelerate
+        
+        if use_accelerate:
+            logger.info("S3 Transfer Acceleration is ENABLED for faster uploads")
         self.cloudfront_input = settings.AWS_CLOUDFRONT_DOMAIN_INPUT
         self.cloudfront_output = settings.AWS_CLOUDFRONT_DOMAIN_OUTPUT
     
