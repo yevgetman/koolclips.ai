@@ -14,7 +14,9 @@ import argparse
 import mimetypes
 import sys
 import time
+import threading
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class MultipartUploader:
@@ -46,6 +48,10 @@ class MultipartUploader:
         self.job_id = None
         self.file_type = None
         self.uploaded_parts = []
+        
+        # Thread safety
+        self.progress_lock = threading.Lock()
+        self.parts_lock = threading.Lock()
     
     def print_progress(self, force=False):
         """Print upload progress"""
@@ -125,40 +131,58 @@ class MultipartUploader:
         
         return True
     
-    def upload_parts(self, batch_size=5):
-        """Step 2: Upload file parts"""
+    def upload_parts(self, max_workers=10):
+        """Step 2: Upload file parts in parallel"""
         print(f"\n{'='*70}")
-        print(f"STEP 2: Uploading Parts")
+        print(f"STEP 2: Uploading Parts (Parallel)")
         print(f"{'='*70}")
         print(f"Total parts: {self.num_parts}")
-        print(f"Batch size: {batch_size} parts at a time\n")
+        print(f"Parallel workers: {max_workers}\n")
         
         self.start_time = time.time()
         self.bytes_uploaded = 0
         
-        # Upload in batches
-        for batch_start in range(1, self.num_parts + 1, batch_size):
-            batch_end = min(batch_start + batch_size - 1, self.num_parts)
-            part_numbers = list(range(batch_start, batch_end + 1))
-            
-            # Get presigned URLs for this batch
-            urls = self.get_part_urls(part_numbers)
-            if not urls:
-                print(f"\n✗ Failed to get URLs for parts {batch_start}-{batch_end}")
-                return False
-            
-            # Upload each part in the batch
+        # Get all presigned URLs upfront
+        print(f"Generating presigned URLs for all {self.num_parts} parts...")
+        all_part_numbers = list(range(1, self.num_parts + 1))
+        urls = self.get_part_urls(all_part_numbers)
+        
+        if not urls:
+            print(f"\n✗ Failed to get presigned URLs")
+            return False
+        
+        print(f"✓ Got {len(urls)} presigned URLs, starting parallel upload...\n")
+        
+        # Upload parts in parallel using ThreadPoolExecutor
+        failed_parts = []
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all upload tasks
+            future_to_part = {}
             for url_data in urls:
                 part_number = url_data['part_number']
                 presigned_url = url_data['url']
-                
-                if not self.upload_single_part(part_number, presigned_url):
-                    print(f"\n✗ Failed to upload part {part_number}")
-                    return False
+                future = executor.submit(self.upload_single_part, part_number, presigned_url)
+                future_to_part[future] = part_number
+            
+            # Process completed uploads
+            for future in as_completed(future_to_part):
+                part_number = future_to_part[future]
+                try:
+                    success = future.result()
+                    if not success:
+                        failed_parts.append(part_number)
+                except Exception as e:
+                    print(f"\n✗ Exception uploading part {part_number}: {str(e)}")
+                    failed_parts.append(part_number)
         
         # Final progress print
         self.print_progress(force=True)
         print()  # New line after progress bar
+        
+        if failed_parts:
+            print(f"\n✗ Failed to upload {len(failed_parts)} parts: {failed_parts}")
+            return False
         
         elapsed = time.time() - self.start_time
         print(f"\n✓ All parts uploaded successfully!")
@@ -194,7 +218,7 @@ class MultipartUploader:
             return None
     
     def upload_single_part(self, part_number, presigned_url):
-        """Upload a single part"""
+        """Upload a single part (thread-safe)"""
         # Calculate byte range for this part
         start_byte = (part_number - 1) * self.part_size
         end_byte = min(start_byte + self.part_size, self.file_size)
@@ -218,15 +242,17 @@ class MultipartUploader:
             # Extract ETag from response
             etag = response.headers.get('ETag', '').strip('"')
             
-            # Store part info for completion
-            self.uploaded_parts.append({
-                'PartNumber': part_number,
-                'ETag': etag
-            })
+            # Store part info for completion (thread-safe)
+            with self.parts_lock:
+                self.uploaded_parts.append({
+                    'PartNumber': part_number,
+                    'ETag': etag
+                })
             
-            # Update progress
-            self.bytes_uploaded += part_data_size
-            self.print_progress()
+            # Update progress (thread-safe)
+            with self.progress_lock:
+                self.bytes_uploaded += part_data_size
+                self.print_progress()
             
             return True
             
@@ -328,6 +354,7 @@ def main():
     parser.add_argument('--url', required=True, help='API base URL')
     parser.add_argument('--segments', type=int, default=5, help='Number of segments')
     parser.add_argument('--part-size', type=int, default=100, help='Part size in MB (default: 100)')
+    parser.add_argument('--workers', type=int, default=10, help='Number of parallel upload workers (default: 10)')
     
     args = parser.parse_args()
     
@@ -352,8 +379,8 @@ def main():
         if not uploader.initiate_upload():
             return
         
-        # Step 2: Upload parts
-        if not uploader.upload_parts(batch_size=5):
+        # Step 2: Upload parts in parallel
+        if not uploader.upload_parts(max_workers=args.workers):
             uploader.abort_upload()
             return
         
