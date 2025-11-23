@@ -516,3 +516,44 @@ def cleanup_job_files(job_id):
         logger.error(f"Job {job_id} not found for cleanup")
     except Exception as e:
         logger.error(f"Error cleaning up S3 files for job {job_id}: {str(e)}")
+
+
+@shared_task
+def scheduled_cloudcube_cleanup(retention_days=5):
+    """
+    Scheduled bulk cleanup of Cloudcube storage
+    
+    This task is executed periodically by Celery Beat (default: daily at 2 AM UTC).
+    Deletes all files except clips created within the retention period.
+    
+    Args:
+        retention_days: Number of days to retain clips (default: 5)
+    """
+    try:
+        logger.info(f"Starting scheduled Cloudcube cleanup (retention: {retention_days} days)")
+        
+        # Check if S3 is configured
+        if not S3Service.is_s3_configured():
+            logger.warning("S3 not configured, skipping scheduled cleanup")
+            return
+        
+        # Initialize S3 service and run bulk cleanup
+        s3_service = S3Service()
+        result = s3_service.bulk_cleanup_cloudcube(
+            retention_days=retention_days,
+            dry_run=False
+        )
+        
+        # Log results
+        deleted_size_mb = result['deleted_size'] / (1024 * 1024)
+        logger.info(
+            f"Scheduled cleanup completed: "
+            f"Deleted {result['deleted_count']} files ({deleted_size_mb:.2f} MB), "
+            f"retained {result['retained_count']} recent clips"
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Scheduled Cloudcube cleanup failed: {str(e)}")
+        raise

@@ -170,17 +170,47 @@ if input("Proceed with cleanup? (y/n): ").lower() == 'y':
 
 ## Recommended Cleanup Schedule
 
-### Option 1: Manual Cleanup
+### Option 1: Celery Beat (Automated - Recommended) ✅
+**Status:** ACTIVE - Configured to run daily at 2 AM UTC
+
+The app now uses Celery Beat for automated scheduled cleanup:
+
+- **Schedule:** Daily at 2:00 AM UTC
+- **Retention:** 5 days (configurable)
+- **Task:** `viral_clips.tasks.scheduled_cloudcube_cleanup`
+
+**Setup Required:**
+```bash
+# Scale the beat dyno to enable scheduled tasks
+heroku ps:scale beat=1 --app koolclips
+
+# Verify it's running
+heroku ps --app koolclips
+```
+
+**Monitor:**
+```bash
+# Check beat scheduler logs
+heroku logs --tail --ps beat --app koolclips
+
+# Check cleanup execution logs
+heroku logs --tail --app koolclips | grep "scheduled_cloudcube_cleanup"
+```
+
+See [CELERY_BEAT_SETUP.md](CELERY_BEAT_SETUP.md) for detailed configuration.
+
+### Option 2: Manual Cleanup
 - Run cleanup manually once per week
 - Use `dry_run=true` first to preview
 - Adjust `retention_days` based on user needs
 
-### Option 2: Automated Cleanup (with CRON)
+### Option 3: External CRON Service
+- Use cron-job.org or similar service
 - Schedule daily cleanup at off-peak hours (e.g., 2 AM)
 - Set `retention_days=5` to give users 5 days to download clips
 - Monitor logs to ensure cleanup is working correctly
 
-### Option 3: On-Demand Cleanup
+### Option 4: On-Demand Cleanup
 - Trigger cleanup when approaching storage limits
 - Use Cloudcube dashboard to monitor storage usage
 - Run cleanup with `dry_run=true` first to estimate space savings
