@@ -20,12 +20,16 @@ Upload audio files directly (MP3, WAV, M4A, etc.) for faster processing and smal
 ### 📦 **NEW: Large File Upload Support!**
 Upload videos up to 2GB using presigned S3 URLs that bypass Heroku's timeout limits. Automatic cleanup removes temporary files after processing completes. [Learn more](docs/LARGE_FILE_UPLOAD.md)
 
+### 🧹 **NEW: Cloudcube Cleanup System!**
+Automatic cleanup of temporary files after Stage 4 completion, plus bulk cleanup API endpoint for managing old clips. Clips are retained for 5 days (configurable) to save storage costs. [Learn more](docs/CLOUDCUBE_CLEANUP.md)
+
 ## Features
 
 - 🎥 **Automated Video Processing**: Upload a video and get viral clips automatically
 - 🎵 **Audio File Support**: Upload audio files (MP3, WAV, etc.) with automatic waveform visualization
 - 📦 **Large File Support**: Direct S3 uploads for files up to 2GB (bypasses Heroku timeout)
 - 🧹 **Automatic Cleanup**: Temporary files removed after processing to save storage
+- 🗑️ **Bulk Cleanup**: API endpoint for periodic cleanup of old clips (5-day retention)
 - 🤖 **AI-Powered Analysis**: Uses GPT-4 or Claude to identify engaging content
 - 📝 **Transcript Extraction**: Accurate timestamps for precise clipping
 - 🎬 **Professional Clips**: High-quality video clips ready for social media

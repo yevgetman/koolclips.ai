@@ -667,3 +667,85 @@ def upload_test_result(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def bulk_cleanup_cloudcube(request):
+    """
+    Bulk cleanup of Cloudcube filesystem
+    
+    Deletes all files except final clips created within the retention period.
+    This endpoint should be called periodically (daily via CRON or manually)
+    to clean up temporary files and old clips.
+    
+    POST /api/cleanup/bulk/
+    Body: {
+        "retention_days": 5,  # Optional, default 5 days
+        "dry_run": false      # Optional, default false (set true to preview without deleting)
+    }
+    
+    Returns: {
+        "success": true,
+        "message": "...",
+        "deleted_count": 150,
+        "deleted_size_mb": 1234.56,
+        "retained_count": 25,
+        "total_files_scanned": 175,
+        "dry_run": false,
+        "deleted_files_sample": ["file1.mp4", "file2.mp3", ...]  # First 100 files
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured. Cannot perform cleanup.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request parameters
+        retention_days = request.data.get('retention_days', 5)
+        dry_run = request.data.get('dry_run', False)
+        
+        # Validate retention_days
+        if not isinstance(retention_days, int) or retention_days < 0:
+            return Response({
+                'success': False,
+                'error': 'retention_days must be a non-negative integer'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Perform bulk cleanup
+        s3_service = S3Service()
+        result = s3_service.bulk_cleanup_cloudcube(
+            retention_days=retention_days,
+            dry_run=dry_run
+        )
+        
+        # Format response
+        deleted_size_mb = result['deleted_size'] / (1024 * 1024)
+        
+        message = (
+            f"{'DRY RUN: Would delete' if dry_run else 'Deleted'} "
+            f"{result['deleted_count']} files ({deleted_size_mb:.2f} MB), "
+            f"retained {result['retained_count']} recent clips"
+        )
+        
+        return Response({
+            'success': True,
+            'message': message,
+            'deleted_count': result['deleted_count'],
+            'deleted_size_mb': round(deleted_size_mb, 2),
+            'retained_count': result['retained_count'],
+            'total_files_scanned': result['total_files_scanned'],
+            'dry_run': result['dry_run'],
+            'deleted_files_sample': result['deleted_files'],
+            'retention_days': retention_days
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Bulk cleanup failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
