@@ -18,10 +18,16 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from viral_clips.template_views import register_page, login_page, profile_page, home_page
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include('viral_clips.urls')),
+    # UI Pages
+    path("", home_page, name='home'),
+    path("register/", register_page, name='register'),
+    path("login/", login_page, name='login'),
+    path("profile/", profile_page, name='profile'),
 ]
 
 # Serve media files in development

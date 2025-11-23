@@ -15,6 +15,8 @@ router.register(r'clips', ClippedVideoViewSet, basename='clippedvideo')
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Authentication endpoints
+    path('auth/', include('viral_clips.auth_urls')),
     # Single-part upload (for smaller files)
     path('upload/presigned-url/', get_presigned_upload_url, name='presigned-upload-url'),
     # Multipart upload (for large files)

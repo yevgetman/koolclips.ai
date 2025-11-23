@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Viral Clips - AI Video Processing{% endblock %}</title>
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Custom Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="h-full">
+    <!-- Navigation Bar -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <a href="/" class="text-2xl font-bold text-primary-600">
+                            🎬 Viral Clips
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    {% if user.is_authenticated %}
+                        <a href="/profile/" class="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            Profile
+                        </a>
+                        <button onclick="handleLogout()" class="bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                            Logout
+                        </button>
+                    {% else %}
+                        <a href="/login/" class="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                            Login
+                        </a>
+                        <a href="/register/" class="bg-primary-600 text-white hover:bg-primary-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+                            Sign Up
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Global Scripts -->
+    <script>
+        // Toast notification function
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgColors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                info: 'bg-blue-500',
+                warning: 'bg-yellow-500'
+            };
+            
+            toast.className = `${bgColors[type]} text-white px-6 py-4 rounded-lg shadow-lg transform transition-all duration-300 ease-in-out translate-x-0 opacity-100 max-w-md`;
+            toast.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <span class="text-sm font-medium">${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+        
+        // Logout function
+        function handleLogout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = '/login/';
+        }
+        
+        // Check if user is authenticated (for client-side)
+        function isAuthenticated() {
+            return !!localStorage.getItem('access_token');
+        }
+        
+        // Get auth headers
+        function getAuthHeaders() {
+            const token = localStorage.getItem('access_token');
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': token ? `Bearer ${token}` : ''
+            };
+        }
+    </script>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
