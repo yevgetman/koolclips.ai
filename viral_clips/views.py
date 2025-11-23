@@ -749,3 +749,81 @@ def bulk_cleanup_cloudcube(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def cleanup_all_clips(request):
+    """
+    Delete ALL clips from Cloudcube (regardless of age)
+    
+    ⚠️ WARNING: This endpoint deletes ALL user-created clips!
+    Use with extreme caution. This is meant for complete storage cleanup.
+    
+    Combined with bulk cleanup, this will delete everything in Cloudcube:
+    1. Run bulk cleanup → deletes temp files and old clips
+    2. Run this endpoint → deletes all remaining clips
+    
+    POST /api/cleanup/clips/
+    Body: {
+        "dry_run": false,  # Optional, default false (set true to preview without deleting)
+        "confirm": true    # Required, must be true to execute (safety check)
+    }
+    
+    Returns: {
+        "success": true,
+        "message": "...",
+        "deleted_count": 13,
+        "deleted_size_mb": 156.78,
+        "dry_run": false,
+        "deleted_files_sample": ["clip1.mp4", "clip2.mp4", ...]
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured. Cannot perform cleanup.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request parameters
+        dry_run = request.data.get('dry_run', False)
+        confirm = request.data.get('confirm', False)
+        
+        # Safety check: require explicit confirmation
+        if not dry_run and not confirm:
+            return Response({
+                'success': False,
+                'error': 'This operation will delete ALL clips. Set "confirm": true to proceed.',
+                'warning': '⚠️ WARNING: This will permanently delete all user-created clips!'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Perform clips cleanup
+        s3_service = S3Service()
+        result = s3_service.cleanup_all_clips(dry_run=dry_run)
+        
+        # Format response
+        deleted_size_mb = result['deleted_size'] / (1024 * 1024)
+        
+        message = (
+            f"{'DRY RUN: Would delete' if dry_run else 'Deleted'} "
+            f"{result['deleted_count']} clips ({deleted_size_mb:.2f} MB)"
+        )
+        
+        return Response({
+            'success': True,
+            'message': message,
+            'deleted_count': result['deleted_count'],
+            'deleted_size_mb': round(deleted_size_mb, 2),
+            'dry_run': result['dry_run'],
+            'deleted_files_sample': result['deleted_files'],
+            'warning': '⚠️ All clips have been deleted!' if not dry_run and result['deleted_count'] > 0 else None
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Clips cleanup failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -4,7 +4,8 @@ from .views import (
     VideoJobViewSet, TranscriptSegmentViewSet, ClippedVideoViewSet,
     get_presigned_upload_url, create_job_from_s3, upload_test_result,
     initiate_multipart_upload, get_multipart_upload_urls,
-    complete_multipart_upload, abort_multipart_upload, bulk_cleanup_cloudcube
+    complete_multipart_upload, abort_multipart_upload, bulk_cleanup_cloudcube,
+    cleanup_all_clips
 )
 
 router = DefaultRouter()
@@ -25,6 +26,7 @@ urlpatterns = [
     path('upload/create-job/', create_job_from_s3, name='create-job-from-s3'),
     # Cleanup utilities
     path('cleanup/bulk/', bulk_cleanup_cloudcube, name='bulk-cleanup-cloudcube'),
+    path('cleanup/clips/', cleanup_all_clips, name='cleanup-all-clips'),
     # Test utilities
     path('test-results/upload/', upload_test_result, name='upload-test-result'),
 ]

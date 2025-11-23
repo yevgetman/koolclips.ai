@@ -790,6 +790,78 @@ class S3Service:
             logger.error(f"Bulk cleanup failed: {str(e)}")
             raise
     
+    def cleanup_all_clips(self, dry_run=False):
+        """
+        Delete all clips from Cloudcube/S3
+        
+        WARNING: This deletes ALL user-created clips, regardless of age.
+        Use with extreme caution! This is meant for complete storage cleanup.
+        
+        Args:
+            dry_run: If True, only simulate deletion without actually deleting files
+        
+        Returns:
+            dict: {
+                'deleted_count': Number of clips deleted,
+                'deleted_size': Total size of deleted clips in bytes,
+                'deleted_files': List of deleted clip keys
+            }
+        """
+        try:
+            # List all files in clips folder
+            prefix = ''
+            if is_cloudcube_enabled():
+                from .cloudcube_adapter import get_cube_name
+                cube = get_cube_name()
+                if cube:
+                    prefix = f"{cube}/public/clips/"
+                else:
+                    prefix = "clips/"
+            else:
+                prefix = "clips/"
+            
+            all_clips = self.list_all_files(prefix=prefix, max_keys=10000)
+            
+            deleted_files = []
+            deleted_size = 0
+            
+            # Delete each clip file
+            for file_info in all_clips:
+                s3_key = file_info['key']
+                file_size = file_info['size']
+                
+                # Skip directory markers
+                if s3_key.endswith('/'):
+                    continue
+                
+                deleted_files.append(s3_key)
+                deleted_size += file_size
+                
+                if not dry_run:
+                    try:
+                        self.delete_file(s3_key)
+                        logger.info(f"Deleted clip: {s3_key} ({file_size} bytes)")
+                    except Exception as e:
+                        logger.error(f"Failed to delete clip {s3_key}: {str(e)}")
+            
+            result = {
+                'deleted_count': len(deleted_files),
+                'deleted_size': deleted_size,
+                'deleted_files': deleted_files[:100],  # Limit to first 100 for response
+                'dry_run': dry_run
+            }
+            
+            if dry_run:
+                logger.info(f"DRY RUN: Would delete {len(deleted_files)} clips ({deleted_size / (1024*1024):.2f} MB)")
+            else:
+                logger.info(f"Clips cleanup completed: Deleted {len(deleted_files)} clips ({deleted_size / (1024*1024):.2f} MB)")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Clips cleanup failed: {str(e)}")
+            raise
+    
     @staticmethod
     def is_s3_configured():
         """
