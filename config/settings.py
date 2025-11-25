@@ -33,6 +33,13 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,koolclips.herokuapp.com,.herokuapp.com,www.koolclips.ai,koolclips.ai').split(',')
 
+# CSRF trusted origins for Django 4.x (required for custom domains)
+CSRF_TRUSTED_ORIGINS = [
+    'https://www.koolclips.ai',
+    'https://koolclips.ai',
+    'https://*.herokuapp.com',
+    'https://koolclips-ed69bc2e07f2.herokuapp.com',
+]
 
 # Application definition
 
