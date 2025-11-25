@@ -133,10 +133,22 @@
         // Get auth headers
         function getAuthHeaders() {
             const token = localStorage.getItem('access_token');
-            return {
-                'Content-Type': 'application/json',
-                'Authorization': token ? `Bearer ${token}` : ''
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                            document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+            
+            const headers = {
+                'Content-Type': 'application/json'
             };
+            
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            if (csrftoken) {
+                headers['X-CSRFToken'] = csrftoken;
+            }
+            
+            return headers;
         }
     </script>
     
