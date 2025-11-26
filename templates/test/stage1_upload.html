@@ -411,12 +411,10 @@
         const presignedUrl = urlData.urls[0].url;
 
         // Upload directly to S3 using presigned URL
+        // Note: Don't add headers that weren't part of the presigned URL signature
         const uploadResponse = await fetch(presignedUrl, {
             method: 'PUT',
-            body: blob,
-            headers: {
-                'Content-Type': selectedFile.type || 'application/octet-stream'
-            }
+            body: blob
         });
 
         if (!uploadResponse.ok) {
