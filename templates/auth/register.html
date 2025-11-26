@@ -167,15 +167,26 @@
                 this.loading = true;
                 
                 try {
-                    // Get CSRF token
-                    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
-                                    document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+                    // Get CSRF token from form input or cookie
+                    let csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+                    
+                    if (!csrftoken) {
+                        // Try to get from cookie
+                        const cookieValue = document.cookie
+                            .split('; ')
+                            .find(row => row.startsWith('csrftoken='));
+                        if (cookieValue) {
+                            csrftoken = cookieValue.split('=')[1];
+                        }
+                    }
+                    
+                    console.log('CSRF Token:', csrftoken ? 'Found' : 'Not found');
                     
                     const response = await fetch('/api/auth/register/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRFToken': csrftoken,
+                            'X-CSRFToken': csrftoken || '',
                         },
                         body: JSON.stringify(this.formData)
                     });
@@ -195,13 +206,16 @@
                         }, 1500);
                     } else {
                         // Handle errors
+                        console.error('Registration failed:', response.status, data);
                         if (data.errors) {
                             const errorMessages = Object.values(data.errors).flat().join(', ');
                             this.errorMessage = errorMessages;
                         } else if (data.error) {
                             this.errorMessage = data.error;
+                        } else if (data.detail) {
+                            this.errorMessage = data.detail;
                         } else {
-                            this.errorMessage = 'Registration failed. Please try again.';
+                            this.errorMessage = `Registration failed (${response.status}). Please try again.`;
                         }
                     }
                 } catch (error) {

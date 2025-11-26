@@ -1,12 +1,15 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 
+@ensure_csrf_cookie
 def register_page(request):
     """Render the registration page"""
     return render(request, 'auth/register.html')
 
 
+@ensure_csrf_cookie
 def login_page(request):
     """Render the login page"""
     return render(request, 'auth/login.html')

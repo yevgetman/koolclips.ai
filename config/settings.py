@@ -41,6 +41,15 @@ CSRF_TRUSTED_ORIGINS = [
     'https://koolclips-ed69bc2e07f2.herokuapp.com',
 ]
 
+# CSRF Cookie Settings
+CSRF_COOKIE_SECURE = not DEBUG  # Use secure cookies in production (HTTPS only)
+CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
+CSRF_COOKIE_SAMESITE = 'Lax'  # Allow reasonable cross-site requests
+
+# Session Cookie Settings  
+SESSION_COOKIE_SECURE = not DEBUG  # Use secure cookies in production
+SESSION_COOKIE_SAMESITE = 'Lax'
+
 # Application definition
 
 INSTALLED_APPS = [
