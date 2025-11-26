@@ -34,7 +34,33 @@ class UserRegistrationView(generics.CreateAPIView):
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        
+        # Validate and return clear error messages
+        if not serializer.is_valid():
+            errors = serializer.errors
+            # Format error messages for better display
+            error_messages = []
+            for field, field_errors in errors.items():
+                if field == 'password':
+                    # Password validation errors
+                    for error in field_errors:
+                        error_messages.append(f"Password: {error}")
+                elif field == 'username':
+                    for error in field_errors:
+                        error_messages.append(f"Username: {error}")
+                elif field == 'email':
+                    for error in field_errors:
+                        error_messages.append(f"Email: {error}")
+                else:
+                    for error in field_errors:
+                        error_messages.append(f"{field.replace('_', ' ').title()}: {error}")
+            
+            return Response({
+                'success': False,
+                'error': ' | '.join(error_messages),
+                'errors': errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         user = serializer.save()
         
         # Generate JWT tokens

@@ -207,11 +207,20 @@
                     } else {
                         // Handle errors
                         console.error('Registration failed:', response.status, data);
-                        if (data.errors) {
-                            const errorMessages = Object.values(data.errors).flat().join(', ');
-                            this.errorMessage = errorMessages;
-                        } else if (data.error) {
+                        
+                        // Use the formatted error message from backend
+                        if (data.error) {
                             this.errorMessage = data.error;
+                        } else if (data.errors) {
+                            // Fallback: format errors if backend didn't format them
+                            const errorMessages = [];
+                            for (const [field, errors] of Object.entries(data.errors)) {
+                                const fieldName = field.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                errors.forEach(err => {
+                                    errorMessages.push(`${fieldName}: ${err}`);
+                                });
+                            }
+                            this.errorMessage = errorMessages.join(' | ');
                         } else if (data.detail) {
                             this.errorMessage = data.detail;
                         } else {

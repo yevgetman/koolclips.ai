@@ -40,6 +40,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'last_name': {'required': False}
         }
     
+    def validate_username(self, value):
+        """Validate username requirements"""
+        if len(value) < 3:
+            raise serializers.ValidationError("Username must be at least 3 characters long.")
+        if len(value) > 30:
+            raise serializers.ValidationError("Username must be no more than 30 characters long.")
+        if not value.replace('_', '').replace('-', '').isalnum():
+            raise serializers.ValidationError("Username can only contain letters, numbers, hyphens, and underscores.")
+        return value
+    
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
