@@ -27,13 +27,21 @@ class S3Service:
         Args:
             use_accelerate: If True, use S3 Transfer Acceleration for faster uploads
         """
-        config = None
+        from botocore.config import Config
+        
+        # Configure boto3 to use region-specific endpoints for presigned URLs
+        config_params = {
+            'signature_version': 's3v4',
+            's3': {
+                'addressing_style': 'virtual'
+            }
+        }
+        
         if use_accelerate:
             # Enable S3 Transfer Acceleration for faster uploads
-            from botocore.config import Config
-            config = Config(
-                s3={'use_accelerate_endpoint': True}
-            )
+            config_params['s3']['use_accelerate_endpoint'] = True
+        
+        config = Config(**config_params)
         
         self.s3_client = boto3.client(
             's3',
