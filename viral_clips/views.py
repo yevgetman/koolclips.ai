@@ -1,11 +1,12 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, parser_classes
-from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 import json
 import uuid
+import io
 from datetime import datetime
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
@@ -524,6 +525,84 @@ def abort_multipart_upload(request):
         
         return Response({
             'success': True
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser])
+def proxy_upload_chunk(request):
+    """
+    Proxy upload chunk to S3 (server-side upload to avoid CORS issues)
+    
+    POST /api/upload/proxy-chunk/
+    Headers: multipart/form-data
+    Fields:
+        - chunk: File chunk
+        - upload_id: Upload ID
+        - s3_key: S3 key
+        - part_number: Part number
+    
+    Returns: {
+        "success": true,
+        "part_number": 1,
+        "etag": "..."
+    }
+    """
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get parameters
+        chunk = request.FILES.get('chunk')
+        upload_id = request.data.get('upload_id')
+        s3_key = request.data.get('s3_key')
+        part_number = int(request.data.get('part_number'))
+        
+        if not all([chunk, upload_id, s3_key, part_number]):
+            return Response({
+                'success': False,
+                'error': 'Missing required parameters'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Upload part to S3
+        s3_service = S3Service()
+        
+        # Read chunk data
+        chunk_data = chunk.read()
+        
+        # Upload part using boto3 directly
+        import boto3
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION_NAME
+        )
+        
+        response = s3_client.upload_part(
+            Bucket=s3_service.input_bucket,
+            Key=s3_key,
+            PartNumber=part_number,
+            UploadId=upload_id,
+            Body=chunk_data
+        )
+        
+        etag = response['ETag']
+        
+        return Response({
+            'success': True,
+            'part_number': part_number,
+            'etag': etag
         }, status=status.HTTP_200_OK)
         
     except Exception as e:

@@ -388,38 +388,33 @@
         const end = Math.min(start + partSize, selectedFile.size);
         const blob = selectedFile.slice(start, end);
 
-        // Get presigned URL for this part
-        const urlResponse = await fetch('/api/upload/multipart/urls/', {
+        // Upload part via proxy endpoint (server-side upload to avoid CORS)
+        const formData = new FormData();
+        formData.append('chunk', blob);
+        formData.append('upload_id', uploadState.uploadId);
+        formData.append('s3_key', uploadState.s3Key);
+        formData.append('part_number', partNumber);
+
+        const uploadResponse = await fetch('/api/upload/proxy-chunk/', {
             method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-                upload_id: uploadState.uploadId,
-                s3_key: uploadState.s3Key,
-                part_numbers: [partNumber]
-            })
-        });
-
-        const urlData = await urlResponse.json();
-        if (!urlData.success || !urlData.urls || urlData.urls.length === 0) {
-            throw new Error(`Failed to get upload URL for part ${partNumber}`);
-        }
-
-        const presignedUrl = urlData.urls[0].url;
-
-        // Upload part to S3
-        const uploadResponse = await fetch(presignedUrl, {
-            method: 'PUT',
-            body: blob,
             headers: {
-                'Content-Type': selectedFile.type
-            }
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            },
+            credentials: 'same-origin',
+            body: formData
         });
 
         if (!uploadResponse.ok) {
-            throw new Error(`Failed to upload part ${partNumber}: ${uploadResponse.statusText}`);
+            const errorData = await uploadResponse.json();
+            throw new Error(`Failed to upload part ${partNumber}: ${errorData.error || uploadResponse.statusText}`);
         }
 
-        const etag = uploadResponse.headers.get('ETag');
+        const uploadData = await uploadResponse.json();
+        if (!uploadData.success) {
+            throw new Error(`Failed to upload part ${partNumber}: ${uploadData.error}`);
+        }
+
+        const etag = uploadData.etag;
         
         // Record uploaded part
         uploadState.parts.push({
