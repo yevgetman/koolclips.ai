@@ -63,15 +63,21 @@
                 </div>
             </div>
 
-            <!-- Upload Settings -->
-            <div class="mb-6 space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">
-                        Part Size (MB)
-                    </label>
-                    <input type="number" id="part-size" value="100" min="5" max="500" 
-                           class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                    <p class="mt-1 text-xs text-gray-400">Direct S3 upload with presigned URLs. Larger parts = faster uploads. Default: 100MB (recommended)</p>
+            <!-- Upload Info -->
+            <div id="upload-info" class="mb-6 hidden">
+                <div class="bg-gray-700 rounded-lg p-4 space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">File Size:</span>
+                        <span id="file-size-display" class="text-white font-medium"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">Part Size:</span>
+                        <span id="part-size-display" class="text-white font-medium"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-400">Total Parts:</span>
+                        <span id="total-parts-display" class="text-white font-medium"></span>
+                    </div>
                 </div>
             </div>
 
@@ -85,17 +91,47 @@
 
             <!-- Progress Section -->
             <div id="progress-section" class="hidden mb-6">
-                <div class="space-y-3">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-300" id="progress-status">Preparing upload...</span>
-                        <span class="text-primary-400 font-medium" id="progress-percent">0%</span>
+                <div class="space-y-4">
+                    <!-- Overall Progress -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-300 font-medium" id="progress-status">Preparing upload...</span>
+                            <span class="text-primary-400 font-bold text-lg" id="progress-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-4 overflow-hidden shadow-inner">
+                            <div id="progress-bar" class="bg-gradient-to-r from-primary-600 via-primary-500 to-primary-400 h-4 rounded-full transition-all duration-300 shadow-lg" style="width: 0%"></div>
+                        </div>
+                        <div class="flex justify-between text-xs text-gray-400">
+                            <span id="upload-speed" class="font-medium">⚡ -</span>
+                            <span id="time-remaining" class="font-medium">⏱️ -</span>
+                        </div>
                     </div>
-                    <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                        <div id="progress-bar" class="bg-gradient-to-r from-primary-600 to-primary-400 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+
+                    <!-- Parts Grid -->
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-gray-400 font-medium">Upload Parts</span>
+                            <span class="text-xs text-gray-400" id="parts-counter">0 / 0</span>
+                        </div>
+                        <div id="parts-grid" class="grid grid-cols-10 gap-1.5">
+                            <!-- Parts will be dynamically added here -->
+                        </div>
                     </div>
-                    <div class="flex justify-between text-xs text-gray-400">
-                        <span id="upload-speed">-</span>
-                        <span id="time-remaining">-</span>
+
+                    <!-- Upload Stats -->
+                    <div class="grid grid-cols-3 gap-3 mt-3">
+                        <div class="bg-gray-700/50 rounded px-3 py-2">
+                            <div class="text-xs text-gray-400">Uploaded</div>
+                            <div class="text-sm text-white font-medium" id="uploaded-size">0 MB</div>
+                        </div>
+                        <div class="bg-gray-700/50 rounded px-3 py-2">
+                            <div class="text-xs text-gray-400">Active</div>
+                            <div class="text-sm text-primary-400 font-medium" id="active-parts">0</div>
+                        </div>
+                        <div class="bg-gray-700/50 rounded px-3 py-2">
+                            <div class="text-xs text-gray-400">Avg Speed</div>
+                            <div class="text-sm text-green-400 font-medium" id="avg-speed">- MB/s</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -230,11 +266,58 @@
         uploadBtn.disabled = false;
     }
 
+    function calculateOptimalPartSize(fileSize) {
+        // Calculate optimal part size based on file size
+        // AWS S3 limits: min 5MB, max 10,000 parts
+        const MB = 1024 * 1024;
+        const minPartSize = 5 * MB;  // 5MB minimum
+        const maxParts = 10000;
+        
+        let partSize;
+        
+        if (fileSize < 100 * MB) {
+            // Small files (< 100MB): single part (no multipart)
+            partSize = fileSize;
+        } else if (fileSize < 500 * MB) {
+            // Medium files (100MB - 500MB): 10MB parts
+            partSize = 10 * MB;
+        } else if (fileSize < 1 * 1024 * MB) {
+            // Large files (500MB - 1GB): 20MB parts
+            partSize = 20 * MB;
+        } else if (fileSize < 2 * 1024 * MB) {
+            // Very large files (1GB - 2GB): 50MB parts
+            partSize = 50 * MB;
+        } else {
+            // Huge files (2GB+): 100MB parts
+            partSize = 100 * MB;
+        }
+        
+        // Ensure we don't exceed max parts limit
+        const numParts = Math.ceil(fileSize / partSize);
+        if (numParts > maxParts) {
+            partSize = Math.ceil(fileSize / maxParts);
+        }
+        
+        // Ensure minimum part size
+        partSize = Math.max(partSize, minPartSize);
+        
+        return partSize;
+    }
+
     function displayFileInfo(file) {
         document.getElementById('file-name').textContent = file.name;
         document.getElementById('file-size').textContent = formatBytes(file.size);
         fileInfo.classList.remove('hidden');
         dropZone.classList.add('hidden');
+        
+        // Calculate and display upload info
+        const partSize = calculateOptimalPartSize(file.size);
+        const numParts = Math.ceil(file.size / partSize);
+        
+        document.getElementById('file-size-display').textContent = formatBytes(file.size);
+        document.getElementById('part-size-display').textContent = formatBytes(partSize);
+        document.getElementById('total-parts-display').textContent = numParts;
+        document.getElementById('upload-info').classList.remove('hidden');
     }
 
     function clearFile() {
@@ -250,6 +333,7 @@
         progressSection.classList.add('hidden');
         resultSection.classList.add('hidden');
         errorSection.classList.add('hidden');
+        document.getElementById('upload-info').classList.add('hidden');
     }
 
     async function startUpload() {
@@ -275,10 +359,15 @@
         uploadBtn.disabled = true;
         updateProgress(0, 'Initiating upload...');
 
+        // Calculate optimal part size
+        const partSize = calculateOptimalPartSize(selectedFile.size);
+        const numParts = Math.ceil(selectedFile.size / partSize);
+        
+        // Initialize parts grid
+        initializePartsGrid(numParts);
+
         try {
             // Step 1: Initiate multipart upload
-            const partSizeMB = parseInt(document.getElementById('part-size').value);
-            const partSize = partSizeMB * 1024 * 1024; // Convert to bytes
             
             const initResponse = await fetch('/api/upload/multipart/initiate/', {
                 method: 'POST',
@@ -388,49 +477,61 @@
         const end = Math.min(start + partSize, selectedFile.size);
         const blob = selectedFile.slice(start, end);
 
-        // Get presigned URL for this part
-        const urlResponse = await fetch('/api/upload/multipart/urls/', {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-                upload_id: uploadState.uploadId,
-                s3_key: uploadState.s3Key,
-                part_numbers: [partNumber]
-            })
-        });
+        // Mark part as uploading
+        updatePartStatus(partNumber, 'uploading');
 
-        if (!urlResponse.ok) {
-            throw new Error(`Failed to get upload URL for part ${partNumber}`);
+        try {
+            // Get presigned URL for this part
+            const urlResponse = await fetch('/api/upload/multipart/urls/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    upload_id: uploadState.uploadId,
+                    s3_key: uploadState.s3Key,
+                    part_numbers: [partNumber]
+                })
+            });
+
+            if (!urlResponse.ok) {
+                throw new Error(`Failed to get upload URL for part ${partNumber}`);
+            }
+
+            const urlData = await urlResponse.json();
+            if (!urlData.success || !urlData.urls || urlData.urls.length === 0) {
+                throw new Error(`No upload URL received for part ${partNumber}`);
+            }
+
+            const presignedUrl = urlData.urls[0].url;
+
+            // Upload directly to S3 using presigned URL
+            // Note: Don't add headers that weren't part of the presigned URL signature
+            const uploadResponse = await fetch(presignedUrl, {
+                method: 'PUT',
+                body: blob
+            });
+
+            if (!uploadResponse.ok) {
+                updatePartStatus(partNumber, 'error');
+                throw new Error(`Failed to upload part ${partNumber} to S3: ${uploadResponse.statusText}`);
+            }
+
+            // Get ETag from response headers
+            const etag = uploadResponse.headers.get('ETag');
+            
+            // Record uploaded part
+            uploadState.parts.push({
+                PartNumber: partNumber,
+                ETag: etag
+            });
+            uploadState.uploadedParts++;
+            uploadState.uploadedBytes += blob.size;
+            
+            // Mark part as completed
+            updatePartStatus(partNumber, 'completed');
+        } catch (error) {
+            updatePartStatus(partNumber, 'error');
+            throw error;
         }
-
-        const urlData = await urlResponse.json();
-        if (!urlData.success || !urlData.urls || urlData.urls.length === 0) {
-            throw new Error(`No upload URL received for part ${partNumber}`);
-        }
-
-        const presignedUrl = urlData.urls[0].url;
-
-        // Upload directly to S3 using presigned URL
-        // Note: Don't add headers that weren't part of the presigned URL signature
-        const uploadResponse = await fetch(presignedUrl, {
-            method: 'PUT',
-            body: blob
-        });
-
-        if (!uploadResponse.ok) {
-            throw new Error(`Failed to upload part ${partNumber} to S3: ${uploadResponse.statusText}`);
-        }
-
-        // Get ETag from response headers
-        const etag = uploadResponse.headers.get('ETag');
-        
-        // Record uploaded part
-        uploadState.parts.push({
-            PartNumber: partNumber,
-            ETag: etag
-        });
-        uploadState.uploadedParts++;
-        uploadState.uploadedBytes += blob.size;
 
         // Update progress
         const percent = Math.round((uploadState.uploadedBytes / uploadState.totalBytes) * 100);
@@ -443,6 +544,39 @@
             speed,
             remaining
         );
+    }
+
+    function initializePartsGrid(numParts) {
+        const partsGrid = document.getElementById('parts-grid');
+        partsGrid.innerHTML = '';
+        
+        // Create a box for each part
+        for (let i = 1; i <= numParts; i++) {
+            const partBox = document.createElement('div');
+            partBox.id = `part-${i}`;
+            partBox.className = 'h-8 bg-gray-700 rounded transition-all duration-300 border border-gray-600';
+            partBox.title = `Part ${i}`;
+            partsGrid.appendChild(partBox);
+        }
+        
+        // Update parts counter
+        document.getElementById('parts-counter').textContent = `0 / ${numParts}`;
+        document.getElementById('active-parts').textContent = '0';
+        document.getElementById('uploaded-size').textContent = '0 MB';
+        document.getElementById('avg-speed').textContent = '- MB/s';
+    }
+
+    function updatePartStatus(partNumber, status) {
+        const partBox = document.getElementById(`part-${partNumber}`);
+        if (!partBox) return;
+        
+        if (status === 'uploading') {
+            partBox.className = 'h-8 bg-primary-500 rounded transition-all duration-300 border border-primary-400 animate-pulse';
+        } else if (status === 'completed') {
+            partBox.className = 'h-8 bg-green-500 rounded transition-all duration-300 border border-green-400';
+        } else if (status === 'error') {
+            partBox.className = 'h-8 bg-red-500 rounded transition-all duration-300 border border-red-400';
+        }
     }
 
     function calculateSpeed() {
@@ -462,13 +596,25 @@
         document.getElementById('progress-status').textContent = status;
         document.getElementById('progress-bar').style.width = `${percent}%`;
         
+        // Update parts counter
+        document.getElementById('parts-counter').textContent = `${uploadState.uploadedParts} / ${uploadState.totalParts}`;
+        
+        // Update stats
+        document.getElementById('uploaded-size').textContent = formatBytes(uploadState.uploadedBytes);
+        
         if (speed !== null) {
-            document.getElementById('upload-speed').textContent = `${formatBytes(speed)}/s`;
+            const speedMBs = speed / (1024 * 1024);
+            document.getElementById('upload-speed').textContent = `⚡ ${formatBytes(speed)}/s`;
+            document.getElementById('avg-speed').textContent = speedMBs.toFixed(2) + ' MB/s';
         }
         
         if (timeRemaining !== null && timeRemaining !== Infinity) {
-            document.getElementById('time-remaining').textContent = formatTime(timeRemaining);
+            document.getElementById('time-remaining').textContent = `⏱️ ${formatTime(timeRemaining)}`;
         }
+        
+        // Update active parts counter (active uploads in progress)
+        const activeCount = activeUploads.length;
+        document.getElementById('active-parts').textContent = activeCount;
     }
 
     function showResult(data) {
