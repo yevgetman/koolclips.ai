@@ -18,7 +18,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     
     email = serializers.EmailField(
         required=True,
-        validators=[UniqueValidator(queryset=User.objects.all())]
+        validators=[UniqueValidator(
+            queryset=User.objects.all(),
+            message="This email address is already registered. Please use a different email or try logging in."
+        )]
     )
     password = serializers.CharField(
         write_only=True,
@@ -37,7 +40,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 'last_name']
         extra_kwargs = {
             'first_name': {'required': False},
-            'last_name': {'required': False}
+            'last_name': {'required': False},
+            'username': {
+                'error_messages': {
+                    'unique': 'This username is already taken. Please choose a different username.'
+                }
+            }
         }
     
     def validate_username(self, value):
@@ -48,6 +56,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Username must be no more than 30 characters long.")
         if not value.replace('_', '').replace('-', '').isalnum():
             raise serializers.ValidationError("Username can only contain letters, numbers, hyphens, and underscores.")
+        
+        # Check if username already exists
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("This username is already taken. Please choose a different username.")
+        
         return value
     
     def validate(self, attrs):
