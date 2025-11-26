@@ -554,9 +554,13 @@ def proxy_upload_chunk(request):
         "etag": "..."
     }
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         # Validate S3 is configured
         if not S3Service.is_s3_configured():
+            logger.error("S3 not configured")
             return Response({
                 'success': False,
                 'error': 'S3 storage not configured'
@@ -566,12 +570,28 @@ def proxy_upload_chunk(request):
         chunk = request.FILES.get('chunk')
         upload_id = request.data.get('upload_id')
         s3_key = request.data.get('s3_key')
-        part_number = int(request.data.get('part_number'))
+        part_number_str = request.data.get('part_number')
         
-        if not all([chunk, upload_id, s3_key, part_number]):
+        logger.info(f"Proxy upload - chunk: {chunk is not None}, upload_id: {upload_id}, s3_key: {s3_key}, part_number: {part_number_str}")
+        
+        if not chunk:
             return Response({
                 'success': False,
-                'error': 'Missing required parameters'
+                'error': 'Missing chunk file'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not upload_id or not s3_key or not part_number_str:
+            return Response({
+                'success': False,
+                'error': f'Missing required parameters: upload_id={bool(upload_id)}, s3_key={bool(s3_key)}, part_number={bool(part_number_str)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            part_number = int(part_number_str)
+        except (ValueError, TypeError) as e:
+            return Response({
+                'success': False,
+                'error': f'Invalid part_number: {part_number_str}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Upload part to S3
@@ -579,6 +599,8 @@ def proxy_upload_chunk(request):
         
         # Read chunk data
         chunk_data = chunk.read()
+        chunk_size = len(chunk_data)
+        logger.info(f"Read chunk data: {chunk_size} bytes for part {part_number}")
         
         # Upload part using boto3 directly
         import boto3
@@ -589,6 +611,8 @@ def proxy_upload_chunk(request):
             region_name=settings.AWS_S3_REGION_NAME
         )
         
+        logger.info(f"Uploading part {part_number} to S3: bucket={s3_service.input_bucket}, key={s3_key}")
+        
         response = s3_client.upload_part(
             Bucket=s3_service.input_bucket,
             Key=s3_key,
@@ -598,6 +622,7 @@ def proxy_upload_chunk(request):
         )
         
         etag = response['ETag']
+        logger.info(f"Part {part_number} uploaded successfully: ETag={etag}")
         
         return Response({
             'success': True,
@@ -606,6 +631,7 @@ def proxy_upload_chunk(request):
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
+        logger.exception(f"Error in proxy_upload_chunk: {str(e)}")
         return Response({
             'success': False,
             'error': str(e)
