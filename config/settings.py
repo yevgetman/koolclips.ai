@@ -49,6 +49,9 @@ CSRF_COOKIE_SAMESITE = 'Lax'  # Allow reasonable cross-site requests
 # Session Cookie Settings  
 SESSION_COOKIE_SECURE = not DEBUG  # Use secure cookies in production
 SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
+SESSION_COOKIE_AGE = 1209600  # 2 weeks in seconds
+SESSION_SAVE_EVERY_REQUEST = False  # Only save on modification
 
 # Application definition
 

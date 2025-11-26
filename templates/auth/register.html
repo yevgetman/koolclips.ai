@@ -188,6 +188,7 @@
                             'Content-Type': 'application/json',
                             'X-CSRFToken': csrftoken || '',
                         },
+                        credentials: 'same-origin',  // Include cookies in request/response
                         body: JSON.stringify(this.formData)
                     });
                     
@@ -200,10 +201,10 @@
                         
                         showToast('Account created successfully! Redirecting...', 'success');
                         
-                        // Redirect to profile
+                        // Redirect to profile using replace
                         setTimeout(() => {
-                            window.location.href = '/profile/';
-                        }, 1500);
+                            window.location.replace('/profile/');
+                        }, 800);
                     } else {
                         // Handle errors
                         console.error('Registration failed:', response.status, data);

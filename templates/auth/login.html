@@ -127,6 +127,7 @@
                             'Content-Type': 'application/json',
                             'X-CSRFToken': csrftoken,
                         },
+                        credentials: 'same-origin',  // Include cookies in request/response
                         body: JSON.stringify(this.formData)
                     });
                     
@@ -139,10 +140,14 @@
                         
                         showToast('Login successful! Redirecting...', 'success');
                         
-                        // Redirect to profile
+                        // Get redirect URL from query parameter or default to profile
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const nextUrl = urlParams.get('next') || '/profile/';
+                        
+                        // Immediate redirect using replace to avoid back button issues
                         setTimeout(() => {
-                            window.location.href = '/profile/';
-                        }, 1500);
+                            window.location.replace(nextUrl);
+                        }, 800);
                     } else {
                         this.errorMessage = data.error || 'Login failed. Please check your credentials.';
                     }

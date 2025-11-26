@@ -261,7 +261,8 @@
             async loadProfile() {
                 try {
                     const response = await fetch('/api/auth/profile/', {
-                        headers: getAuthHeaders()
+                        headers: getAuthHeaders(),
+                        credentials: 'same-origin'
                     });
                     
                     if (response.ok) {
@@ -285,6 +286,7 @@
                     const response = await fetch('/api/auth/profile/', {
                         method: 'PATCH',
                         headers: getAuthHeaders(),
+                        credentials: 'same-origin',
                         body: JSON.stringify(this.editData)
                     });
                     
@@ -318,6 +320,7 @@
                     const response = await fetch('/api/auth/change-password/', {
                         method: 'POST',
                         headers: getAuthHeaders(),
+                        credentials: 'same-origin',
                         body: JSON.stringify(this.passwordData)
                     });
                     
@@ -348,6 +351,7 @@
                     const response = await fetch('/api/auth/delete-account/', {
                         method: 'DELETE',
                         headers: getAuthHeaders(),
+                        credentials: 'same-origin',
                         body: JSON.stringify({ password: this.deletePassword })
                     });
                     
