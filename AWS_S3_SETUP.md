@@ -13,10 +13,12 @@ CloudCube doesn't support CORS configuration, which is required for browser uplo
 
 ## Step 2: Configure CORS on the Bucket
 
+**IMPORTANT**: CORS configuration is NOT the same as bucket policy. Paste this in the CORS section, NOT the bucket policy section.
+
 1. Open your bucket
 2. Go to **Permissions** tab
-3. Scroll to **Cross-origin resource sharing (CORS)**
-4. Click "Edit" and paste this configuration:
+3. Scroll down to **Cross-origin resource sharing (CORS)** section (NOT "Bucket policy")
+4. Click "Edit" and paste this CORS configuration:
 
 ```json
 [
@@ -49,7 +51,33 @@ CloudCube doesn't support CORS configuration, which is required for browser uplo
 
 5. Click "Save changes"
 
-## Step 3: Create IAM User with S3 Access
+## Step 3: Configure Bucket Policy (for Public Read Access)
+
+**IMPORTANT**: This is a separate configuration from CORS. This allows public read access to your uploaded clips.
+
+1. In your bucket, stay on the **Permissions** tab
+2. Scroll down to **Bucket policy** section
+3. Click "Edit" and paste this policy (replace `your-bucket-name` with your actual bucket name):
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "PublicReadGetObject",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::your-bucket-name/*"
+        }
+    ]
+}
+```
+
+4. Replace `your-bucket-name` with your actual bucket name (e.g., `koolclips-uploads`)
+5. Click "Save changes"
+
+## Step 4: Create IAM User with S3 Access
 
 1. Go to [IAM Console](https://console.aws.amazon.com/iam/)
 2. Click "Users" → "Add users"
@@ -63,7 +91,7 @@ CloudCube doesn't support CORS configuration, which is required for browser uplo
 10. Choose "Application running outside AWS"
 11. **Save the Access Key ID and Secret Access Key** (you'll need these next)
 
-## Step 4: Update Heroku Config
+## Step 5: Update Heroku Config
 
 Run these commands to update your Heroku configuration:
 
@@ -80,7 +108,7 @@ heroku config:set AWS_S3_REGION_NAME="us-east-1" -a koolclips
 heroku config:unset CLOUDCUBE_URL -a koolclips
 ```
 
-## Step 5: Optional - CloudFront CDN
+## Step 6: Optional - CloudFront CDN
 
 For faster downloads, set up CloudFront:
 
@@ -92,7 +120,7 @@ For faster downloads, set up CloudFront:
 heroku config:set AWS_CLOUDFRONT_DOMAIN_INPUT="d123456abcdef.cloudfront.net" -a koolclips
 ```
 
-## Step 6: Restart Heroku
+## Step 7: Restart Heroku
 
 ```bash
 heroku restart -a koolclips

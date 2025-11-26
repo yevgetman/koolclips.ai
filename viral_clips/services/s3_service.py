@@ -101,8 +101,7 @@ class S3Service:
         extra_args = {}
         if content_type:
             extra_args['ContentType'] = content_type
-        if public:
-            extra_args['ACL'] = 'public-read'
+        # Note: Public access is controlled by bucket policy, not ACLs
         
         try:
             if isinstance(file_obj, str):
@@ -278,8 +277,7 @@ class S3Service:
             
             if content_type:
                 params['ContentType'] = content_type
-            if public:
-                params['ACL'] = 'public-read'
+            # Note: Public access is controlled by bucket policy, not ACLs
             
             # Initiate multipart upload
             response = self.s3_client.create_multipart_upload(**params)
@@ -439,9 +437,7 @@ class S3Service:
         if content_type:
             conditions.append({'Content-Type': content_type})
             fields['Content-Type'] = content_type
-        if public:
-            conditions.append({'acl': 'public-read'})
-            fields['acl'] = 'public-read'
+        # Note: Public access is controlled by bucket policy, not ACLs
         
         try:
             # Generate presigned POST
