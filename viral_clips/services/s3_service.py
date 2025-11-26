@@ -1,8 +1,10 @@
 """
-S3 Service for managing file uploads and downloads with AWS S3
+S3Service for managing uploads, downloads, and presigned URLs
 
-Supports both standalone AWS S3 and Cloudcube Heroku add-on.
-Cloudcube automatically detected and configured.
+Direct AWS S3 implementation with support for:
+- Single and multipart uploads with presigned URLs
+- CloudFront CDN integration
+- S3 Transfer Acceleration for faster uploads
 """
 
 import boto3
@@ -11,27 +13,6 @@ import tempfile
 from django.conf import settings
 from botocore.exceptions import ClientError
 import logging
-
-try:
-    from .cloudcube_adapter import (
-        is_cloudcube_enabled,
-        get_s3_key,
-        get_public_url,
-        strip_cube_prefix
-    )
-except ImportError:
-    # Fallback if cloudcube_adapter not available
-    def is_cloudcube_enabled():
-        return False
-    
-    def get_s3_key(path, public=True):
-        return path
-    
-    def get_public_url(s3_key):
-        return None
-    
-    def strip_cube_prefix(s3_key):
-        return s3_key
 
 logger = logging.getLogger(__name__)
 
@@ -63,23 +44,23 @@ class S3Service:
         )
         self.input_bucket = settings.AWS_STORAGE_BUCKET_NAME
         self.output_bucket = settings.AWS_STORAGE_BUCKET_NAME
+        self.region = settings.AWS_S3_REGION_NAME
         self.use_accelerate = use_accelerate
         
         if use_accelerate:
             logger.info("S3 Transfer Acceleration is ENABLED for faster uploads")
-        self.cloudfront_input = settings.AWS_CLOUDFRONT_DOMAIN_INPUT
-        self.cloudfront_output = settings.AWS_CLOUDFRONT_DOMAIN_OUTPUT
+        self.cloudfront_domain = settings.AWS_CLOUDFRONT_DOMAIN
     
     def upload_file_content(self, content_bytes, s3_key, bucket=None, content_type=None, public=True):
         """
-        Upload byte content directly to S3 (with automatic Cloudcube support)
+        Upload byte content directly to S3
         
         Args:
             content_bytes: Bytes content to upload
-            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
+            s3_key: S3 key (path) for the file
             bucket: S3 bucket name (defaults to input bucket)
             content_type: MIME type (optional)
-            public: If True, makes file publicly accessible (important for Cloudcube)
+            public: If True, makes file publicly accessible
         
         Returns:
             str: Public URL of uploaded file
@@ -97,71 +78,54 @@ class S3Service:
     
     def upload_file(self, file_obj, s3_key, bucket=None, content_type=None, public=True):
         """
-        Upload a file to S3 (with automatic Cloudcube support)
+        Upload a file to S3
         
         Args:
             file_obj: File object or file path to upload
-            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
+            s3_key: S3 key (path) for the file
             bucket: S3 bucket name (defaults to input bucket)
             content_type: MIME type (optional)
-            public: If True, makes file publicly accessible (important for Cloudcube)
+            public: If True, makes file publicly accessible via bucket policy
         
         Returns:
             dict: {
                 's3_url': Direct S3 URL,
-                'cloudfront_url': CloudFront CDN URL or public URL (Cloudcube),
-                's3_key': Full S3 object key (with cube prefix if Cloudcube),
-                'bucket': Bucket name,
-                'public_url': Public URL if using Cloudcube
+                'cloudfront_url': CloudFront CDN URL (if configured),
+                'public_url': Public URL (CloudFront or S3),
+                's3_key': S3 object key,
+                'bucket': Bucket name
             }
         """
         bucket = bucket or self.input_bucket
         
-        # Convert to Cloudcube format if needed (adds cube/public/ prefix)
-        full_s3_key = get_s3_key(s3_key, public=public)
-        
         extra_args = {}
         if content_type:
             extra_args['ContentType'] = content_type
+        if public:
+            extra_args['ACL'] = 'public-read'
         
         try:
             if isinstance(file_obj, str):
                 # File path provided
-                self.s3_client.upload_file(file_obj, bucket, full_s3_key, ExtraArgs=extra_args or None)
+                self.s3_client.upload_file(file_obj, bucket, s3_key, ExtraArgs=extra_args or None)
             else:
                 # File object provided
-                self.s3_client.upload_fileobj(file_obj, bucket, full_s3_key, ExtraArgs=extra_args or None)
+                self.s3_client.upload_fileobj(file_obj, bucket, s3_key, ExtraArgs=extra_args or None)
             
             # Generate S3 URL
-            s3_url = f"https://{bucket}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{full_s3_key}"
+            s3_url = f"https://{bucket}.s3.{self.region}.amazonaws.com/{s3_key}"
             
-            # For Cloudcube, generate public URL
-            if is_cloudcube_enabled() and public:
-                public_url = get_public_url(full_s3_key)
-                logger.info(f"Uploaded to Cloudcube: {public_url}")
-                
-                return {
-                    's3_url': s3_url,
-                    'cloudfront_url': public_url,  # Use public URL for Cloudcube
-                    'public_url': public_url,
-                    's3_key': full_s3_key,
-                    'bucket': bucket
-                }
-            
-            # For standalone AWS, use CloudFront if configured
-            cloudfront_domain = (
-                self.cloudfront_output 
-                if bucket == self.output_bucket 
-                else self.cloudfront_input
-            )
-            cloudfront_url = f"https://{cloudfront_domain}/{full_s3_key}" if cloudfront_domain else s3_url
+            # Use CloudFront if configured
+            cloudfront_url = f"https://{self.cloudfront_domain}/{s3_key}" if self.cloudfront_domain else s3_url
+            public_url = cloudfront_url
             
             logger.info(f"Uploaded to S3: {s3_url}")
             
             return {
                 's3_url': s3_url,
                 'cloudfront_url': cloudfront_url,
-                's3_key': full_s3_key,
+                'public_url': public_url,
+                's3_key': s3_key,
                 'bucket': bucket
             }
             
@@ -172,30 +136,23 @@ class S3Service:
             logger.error(f"Unexpected error uploading to S3: {str(e)}")
             raise
     
-    def download_file(self, s3_key, local_path=None, bucket=None, normalize_key=False):
+    def download_file(self, s3_key, local_path=None, bucket=None):
         """
-        Download a file from S3 (with automatic Cloudcube support)
+        Download a file from S3
         
         Args:
-            s3_key: S3 key of the file (should already include cube prefix if from storage backend)
+            s3_key: S3 key of the file
             local_path: Local path to save (creates temp file if None)
             bucket: S3 bucket name (defaults to input bucket)
-            normalize_key: If True, add Cloudcube prefix (only use if s3_key doesn't have it)
         
         Returns:
             str: Path to downloaded file
         """
         bucket = bucket or self.input_bucket
         
-        # Only add cube prefix if explicitly requested (for backwards compatibility)
-        if normalize_key:
-            s3_key = get_s3_key(s3_key, public=True)
-        
         if local_path is None:
             # Create temp file with appropriate extension
-            # Use original path (without cube prefix) for extension
-            original_path = strip_cube_prefix(s3_key)
-            suffix = os.path.splitext(original_path)[1]
+            suffix = os.path.splitext(s3_key)[1]
             fd, local_path = tempfile.mkstemp(suffix=suffix)
             os.close(fd)
         
@@ -299,7 +256,7 @@ class S3Service:
         Initiate a multipart upload to S3
         
         Args:
-            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
+            s3_key: S3 key (path) for the file
             bucket: S3 bucket name (defaults to input bucket)
             content_type: MIME type (optional)
             public: If True, makes file publicly accessible
@@ -307,33 +264,32 @@ class S3Service:
         Returns:
             dict: {
                 'upload_id': Upload ID for this multipart upload,
-                's3_key': Full S3 key (with cube prefix),
+                's3_key': S3 key,
                 'bucket': Bucket name
             }
         """
         bucket = bucket or self.input_bucket
         
-        # Convert to Cloudcube format if needed
-        full_s3_key = get_s3_key(s3_key, public=public)
-        
         try:
             params = {
                 'Bucket': bucket,
-                'Key': full_s3_key
+                'Key': s3_key
             }
             
             if content_type:
                 params['ContentType'] = content_type
+            if public:
+                params['ACL'] = 'public-read'
             
             # Initiate multipart upload
             response = self.s3_client.create_multipart_upload(**params)
             
             upload_id = response['UploadId']
-            logger.info(f"Initiated multipart upload for: {full_s3_key}, upload_id: {upload_id}")
+            logger.info(f"Initiated multipart upload for: {s3_key}, upload_id: {upload_id}")
             
             return {
                 'upload_id': upload_id,
-                's3_key': full_s3_key,
+                's3_key': s3_key,
                 'bucket': bucket
             }
             
@@ -456,51 +412,51 @@ class S3Service:
         This allows clients to upload large files without going through the server
         
         Args:
-            s3_key: S3 key (path) for the file - will be automatically prefixed for Cloudcube
+            s3_key: S3 key (path) for the file
             bucket: S3 bucket name (defaults to input bucket)
             content_type: MIME type (optional)
             expiration: URL expiration time in seconds (default 3600 = 1 hour)
-            public: If True, makes file publicly accessible (important for Cloudcube)
+            public: If True, makes file publicly accessible
         
         Returns:
             dict: {
                 'url': Presigned POST URL,
                 'fields': Form fields to include in the POST request,
-                's3_key': Full S3 key (with cube prefix if using Cloudcube),
+                's3_key': S3 key,
                 'bucket': Bucket name
             }
         """
         bucket = bucket or self.input_bucket
         
-        # Convert to Cloudcube format if needed (adds cube/public/ prefix)
-        full_s3_key = get_s3_key(s3_key, public=public)
-        
         # Prepare conditions for presigned POST
         conditions = [
             {'bucket': bucket},
-            {'key': full_s3_key}
+            {'key': s3_key}
         ]
         
-        fields = {'key': full_s3_key}
+        fields = {'key': s3_key}
         
         if content_type:
             conditions.append({'Content-Type': content_type})
             fields['Content-Type'] = content_type
+        if public:
+            conditions.append({'acl': 'public-read'})
+            fields['acl'] = 'public-read'
         
         try:
             # Generate presigned POST
             response = self.s3_client.generate_presigned_post(
                 Bucket=bucket,
-                Key=full_s3_key,
+                Key=s3_key,
                 Fields=fields,
                 Conditions=conditions,
                 ExpiresIn=expiration
             )
             
-            response['s3_key'] = full_s3_key
+            response['s3_key'] = s3_key
             response['bucket'] = bucket
             
-            logger.info(f"Generated presigned upload URL for: {full_s3_key}")
+            logger.info(f"Generated presigned upload URL for: {s3_key}")
             return response
             
         except ClientError as e:
@@ -592,16 +548,12 @@ class S3Service:
         """
         bucket = bucket or self.input_bucket
         
-        # For Cloudcube, use the public URL
-        if is_cloudcube_enabled():
-            return get_public_url(s3_key)
-        
-        # For standalone AWS with CloudFront
-        if self.cloudfront_input:
-            return f"https://{self.cloudfront_input}/{s3_key}"
+        # Use CloudFront if configured
+        if self.cloudfront_domain:
+            return f"https://{self.cloudfront_domain}/{s3_key}"
         
         # Direct S3 URL
-        return f"https://{bucket}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
+        return f"https://{bucket}.s3.{self.region}.amazonaws.com/{s3_key}"
     
     def list_all_files(self, bucket=None, prefix='', max_keys=1000):
         """
@@ -722,15 +674,8 @@ class S3Service:
             
             logger.info(f"Found {len(preserved_keys)} clip files to preserve (created within {retention_days} days)")
             
-            # List all files in Cloudcube
-            prefix = ''
-            if is_cloudcube_enabled():
-                from .cloudcube_adapter import get_cube_name
-                cube = get_cube_name()
-                if cube:
-                    prefix = f"{cube}/"
-            
-            all_files = self.list_all_files(prefix=prefix, max_keys=10000)
+            # List all files in S3
+            all_files = self.list_all_files(prefix='', max_keys=10000)
             
             deleted_files = []
             deleted_size = 0
@@ -809,16 +754,7 @@ class S3Service:
         """
         try:
             # List all files in clips folder
-            prefix = ''
-            if is_cloudcube_enabled():
-                from .cloudcube_adapter import get_cube_name
-                cube = get_cube_name()
-                if cube:
-                    prefix = f"{cube}/public/clips/"
-                else:
-                    prefix = "clips/"
-            else:
-                prefix = "clips/"
+            prefix = "clips/"
             
             all_clips = self.list_all_files(prefix=prefix, max_keys=10000)
             

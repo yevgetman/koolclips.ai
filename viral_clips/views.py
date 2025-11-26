@@ -702,11 +702,8 @@ def create_job_from_s3(request):
         job.media_file_s3_url = s3_service.get_public_url_from_key(s3_key)
         job.media_file_cloudfront_url = job.media_file_s3_url
         
-        # Store UNPREFIXED key in media_file.name so Django storage doesn't double-prefix
-        # The s3_key from presigned data already includes Cloudcube prefix, so strip it
-        from viral_clips.services.cloudcube_adapter import strip_cube_prefix
-        unprefixed_key = strip_cube_prefix(s3_key)
-        job.media_file.name = unprefixed_key
+        # Store the S3 key directly
+        job.media_file.name = s3_key
         job.save()
         
         # Trigger processing pipeline

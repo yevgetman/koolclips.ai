@@ -172,54 +172,29 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.getenv('MEDIA_ROOT', BASE_DIR / 'media')
 
-# AWS S3 Configuration
-# Check for Cloudcube (Heroku add-on) first, then fall back to standalone AWS
-CLOUDCUBE_URL = os.getenv('CLOUDCUBE_URL', '')
-CLOUDCUBE_ACCESS_KEY_ID = os.getenv('CLOUDCUBE_ACCESS_KEY_ID', '')
-CLOUDCUBE_SECRET_ACCESS_KEY = os.getenv('CLOUDCUBE_SECRET_ACCESS_KEY', '')
-
-if CLOUDCUBE_URL:
-    # Using Cloudcube add-on
-    AWS_ACCESS_KEY_ID = CLOUDCUBE_ACCESS_KEY_ID or os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = CLOUDCUBE_SECRET_ACCESS_KEY or os.getenv('AWS_SECRET_ACCESS_KEY')
-    # Extract bucket name from CLOUDCUBE_URL (e.g., cloud-cube, cloud-cube-eu)
-    bucket_match = re.search(r'https://([^.]+)\.s3', CLOUDCUBE_URL)
-    AWS_STORAGE_BUCKET_NAME = bucket_match.group(1) if bucket_match else 'cloud-cube'
-    AWS_S3_BUCKET_OUTPUT = AWS_STORAGE_BUCKET_NAME  # Use same bucket for output
-    # Cloudcube buckets are typically in us-east-1
-    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION', 'us-east-1')
-else:
-    # Using standalone AWS S3
-    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-    AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_INPUT', 'koolclips-input-media')
-    AWS_S3_BUCKET_OUTPUT = os.getenv('AWS_S3_BUCKET_OUTPUT', 'koolclips-output-clips')
-    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION', 'us-east-1')
-
+# AWS S3 Configuration - Direct S3 (No CloudCube)
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', 'koolclips-media')
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 
-# CloudFront Configuration
-AWS_CLOUDFRONT_DOMAIN_INPUT = os.getenv('AWS_CLOUDFRONT_DOMAIN_INPUT', '')
-AWS_CLOUDFRONT_DOMAIN_OUTPUT = os.getenv('AWS_CLOUDFRONT_DOMAIN_OUTPUT', '')
+# CloudFront CDN Configuration (optional)
+AWS_CLOUDFRONT_DOMAIN = os.getenv('AWS_CLOUDFRONT_DOMAIN', '')
 
 # S3 Storage Settings
 AWS_S3_FILE_OVERWRITE = False
-AWS_DEFAULT_ACL = None
+AWS_DEFAULT_ACL = None  # Use bucket policy for access control
 AWS_S3_OBJECT_PARAMETERS = {
     'CacheControl': 'max-age=86400',
 }
 
 # Use S3 for media files if AWS credentials are configured
 if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-    if CLOUDCUBE_URL:
-        # Use custom Cloudcube storage backend
-        DEFAULT_FILE_STORAGE = 'viral_clips.storage_backends.CloudcubeStorage'
-    else:
-        # Use standard S3 storage for standalone AWS
-        DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     
-    if AWS_CLOUDFRONT_DOMAIN_INPUT:
-        MEDIA_URL = f'https://{AWS_CLOUDFRONT_DOMAIN_INPUT}/'
+    if AWS_CLOUDFRONT_DOMAIN:
+        MEDIA_URL = f'https://{AWS_CLOUDFRONT_DOMAIN}/'
     else:
         MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
 else:
