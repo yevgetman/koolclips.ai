@@ -403,13 +403,23 @@
 
             // Step 3: Complete multipart upload
             updateProgress(95, 'Finalizing upload...');
+            
+            // Sort parts by part number (S3 requires them in order)
+            const sortedParts = uploadState.parts.sort((a, b) => a.PartNumber - b.PartNumber);
+            
+            // Verify all parts were uploaded
+            console.log(`Completing upload: ${sortedParts.length} parts uploaded out of ${uploadState.totalParts} expected`);
+            if (sortedParts.length !== uploadState.totalParts) {
+                throw new Error(`Upload incomplete: only ${sortedParts.length} of ${uploadState.totalParts} parts uploaded`);
+            }
+            
             const completeResponse = await fetch('/api/upload/multipart/complete/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
                     upload_id: uploadState.uploadId,
                     s3_key: uploadState.s3Key,
-                    parts: uploadState.parts
+                    parts: sortedParts
                 })
             });
 
@@ -449,32 +459,44 @@
     }
 
     async function uploadPartsInParallel(partSize, concurrency) {
-        const uploadQueue = [];
+        // Reset active uploads tracking
+        activeUploads = [];
         
-        // Create upload tasks for all parts
+        // Create array of all part numbers to upload
+        const allParts = [];
         for (let partNumber = 1; partNumber <= uploadState.totalParts; partNumber++) {
-            uploadQueue.push(partNumber);
+            allParts.push(partNumber);
         }
 
-        // Process parts with concurrency limit
-        activeUploads = []; // Reset the global activeUploads array
-        let queueIndex = 0;
+        // Upload parts with concurrency control
+        let index = 0;
+        const uploadPromises = [];
 
-        while (queueIndex < uploadQueue.length || activeUploads.length > 0) {
-            // Start new uploads up to concurrency limit
-            while (activeUploads.length < concurrency && queueIndex < uploadQueue.length) {
-                const partNumber = uploadQueue[queueIndex++];
-                const uploadPromise = uploadPart(partNumber, partSize);
-                activeUploads.push(uploadPromise);
-            }
-
-            // Wait for at least one upload to complete
-            if (activeUploads.length > 0) {
-                const completed = await Promise.race(activeUploads);
-                const index = activeUploads.findIndex(p => p === completed);
-                activeUploads.splice(index, 1);
+        async function uploadNext() {
+            while (index < allParts.length) {
+                const partNumber = allParts[index++];
+                
+                // Add to active tracking
+                const dummyPromise = Promise.resolve();
+                activeUploads.push(dummyPromise);
+                
+                try {
+                    await uploadPart(partNumber, partSize);
+                } finally {
+                    // Remove from active tracking
+                    const idx = activeUploads.indexOf(dummyPromise);
+                    if (idx > -1) activeUploads.splice(idx, 1);
+                }
             }
         }
+
+        // Start concurrent workers
+        for (let i = 0; i < concurrency; i++) {
+            uploadPromises.push(uploadNext());
+        }
+
+        // Wait for all workers to complete
+        await Promise.all(uploadPromises);
     }
 
     async function uploadPart(partNumber, partSize) {
