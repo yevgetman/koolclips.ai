@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, login, logout
 from rest_framework_simplejwt.tokens import RefreshToken
 from .auth_serializers import (
     UserSerializer, UserRegistrationSerializer, 
@@ -63,7 +63,10 @@ class UserRegistrationView(generics.CreateAPIView):
         
         user = serializer.save()
         
-        # Generate JWT tokens
+        # Create Django session (for @login_required decorators)
+        login(request, user)
+        
+        # Generate JWT tokens (for API authentication)
         refresh = RefreshToken.for_user(user)
         
         return Response({
@@ -110,7 +113,10 @@ class UserLoginView(APIView):
                 'error': 'Invalid credentials'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
-        # Generate JWT tokens
+        # Create Django session (for @login_required decorators)
+        login(request, user)
+        
+        # Generate JWT tokens (for API authentication)
         refresh = RefreshToken.for_user(user)
         
         return Response({
@@ -284,3 +290,22 @@ def refresh_token_view(request):
             'success': False,
             'error': 'Invalid or expired refresh token'
         }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def logout_view(request):
+    """
+    Logout user and clear Django session
+    
+    POST /api/auth/logout/
+    
+    Returns: Success message
+    """
+    # Clear Django session
+    logout(request)
+    
+    return Response({
+        'success': True,
+        'message': 'Logged out successfully'
+    }, status=status.HTTP_200_OK)
