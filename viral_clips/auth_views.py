@@ -30,6 +30,7 @@ class UserRegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []  # No authentication required for registration
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -63,6 +64,7 @@ class UserLoginView(APIView):
     Returns: User details with JWT tokens
     """
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []  # No authentication required for login
     
     def post(self, request):
         username = request.data.get('username')
