@@ -3,27 +3,27 @@
 {% block title %}Profile - Viral Clips{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
+<div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-12 px-4 sm:px-6 lg:px-8">
     {% csrf_token %}
     <div class="max-w-5xl mx-auto" x-data="profilePage()">
         <!-- Page Header -->
         <div class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">Profile Dashboard</h1>
-            <p class="text-gray-600 mt-2">Manage your account settings and information</p>
+            <h1 class="text-3xl font-bold text-white">Profile Dashboard</h1>
+            <p class="text-gray-300 mt-2">Manage your account settings and information</p>
         </div>
         
         <!-- Profile Cards Grid -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <!-- Profile Info Card -->
-            <div class="md:col-span-2 bg-white rounded-2xl shadow-lg p-8">
+            <div class="md:col-span-2 bg-gray-800 rounded-2xl shadow-lg p-8 border border-gray-700">
                 <div class="flex items-start justify-between mb-6">
                     <div>
-                        <h2 class="text-xl font-bold text-gray-900">Profile Information</h2>
-                        <p class="text-sm text-gray-600 mt-1">Update your personal details</p>
+                        <h2 class="text-xl font-bold text-white">Profile Information</h2>
+                        <p class="text-sm text-gray-300 mt-1">Update your personal details</p>
                     </div>
                     <button 
                         @click="editMode = !editMode"
-                        class="text-primary-600 hover:text-primary-700 font-medium text-sm"
+                        class="text-primary-400 hover:text-primary-300 font-medium text-sm"
                     >
                         <span x-show="!editMode">Edit</span>
                         <span x-show="editMode">Cancel</span>
@@ -33,54 +33,54 @@
                 <!-- View Mode -->
                 <div x-show="!editMode" class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-500 mb-1">Username</label>
-                        <p class="text-gray-900 font-medium" x-text="user.username"></p>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Username</label>
+                        <p class="text-white font-medium" x-text="user.username"></p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-500 mb-1">Email</label>
-                        <p class="text-gray-900" x-text="user.email"></p>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Email</label>
+                        <p class="text-white" x-text="user.email"></p>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-500 mb-1">First Name</label>
-                            <p class="text-gray-900" x-text="user.first_name || 'Not set'"></p>
+                            <label class="block text-sm font-medium text-gray-400 mb-1">First Name</label>
+                            <p class="text-white" x-text="user.first_name || 'Not set'"></p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-500 mb-1">Last Name</label>
-                            <p class="text-gray-900" x-text="user.last_name || 'Not set'"></p>
+                            <label class="block text-sm font-medium text-gray-400 mb-1">Last Name</label>
+                            <p class="text-white" x-text="user.last_name || 'Not set'"></p>
                         </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-500 mb-1">Member Since</label>
-                        <p class="text-gray-900" x-text="formatDate(user.date_joined)"></p>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Member Since</label>
+                        <p class="text-white" x-text="formatDate(user.date_joined)"></p>
                     </div>
                 </div>
                 
                 <!-- Edit Mode -->
                 <form x-show="editMode" @submit.prevent="updateProfile" class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
                         <input 
                             type="email" 
                             x-model="editData.email"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                         >
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">First Name</label>
                             <input 
                                 type="text" 
                                 x-model="editData.first_name"
-                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             >
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Last Name</label>
                             <input 
                                 type="text" 
                                 x-model="editData.last_name"
-                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             >
                         </div>
                     </div>
@@ -90,7 +90,7 @@
                     <button 
                         type="submit"
                         :disabled="updating"
-                        class="w-full bg-primary-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50"
+                        class="w-full bg-primary-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-primary-500 disabled:opacity-50"
                     >
                         <span x-show="!updating">Save Changes</span>
                         <span x-show="updating">Saving...</span>
@@ -121,33 +121,33 @@
         <!-- Security Settings -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Change Password Card -->
-            <div class="bg-white rounded-2xl shadow-lg p-8">
-                <h2 class="text-xl font-bold text-gray-900 mb-6">Change Password</h2>
+            <div class="bg-gray-800 rounded-2xl shadow-lg p-8 border border-gray-700">
+                <h2 class="text-xl font-bold text-white mb-6">Change Password</h2>
                 <form @submit.prevent="changePassword" class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
                         <input 
                             type="password" 
                             x-model="passwordData.old_password"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             placeholder="••••••••"
                         >
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">New Password</label>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">New Password</label>
                         <input 
                             type="password" 
                             x-model="passwordData.new_password"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             placeholder="••••••••"
                         >
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
                         <input 
                             type="password" 
                             x-model="passwordData.new_password_confirm"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             placeholder="••••••••"
                         >
                     </div>
@@ -157,7 +157,7 @@
                     <button 
                         type="submit"
                         :disabled="changingPassword"
-                        class="w-full bg-primary-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50"
+                        class="w-full bg-primary-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-primary-500 disabled:opacity-50"
                     >
                         <span x-show="!changingPassword">Update Password</span>
                         <span x-show="changingPassword">Updating...</span>
@@ -166,14 +166,14 @@
             </div>
             
             <!-- Danger Zone Card -->
-            <div class="bg-white rounded-2xl shadow-lg p-8 border-2 border-red-200">
-                <h2 class="text-xl font-bold text-red-900 mb-2">Danger Zone</h2>
-                <p class="text-sm text-gray-600 mb-6">Irreversible actions</p>
+            <div class="bg-gray-800 rounded-2xl shadow-lg p-8 border-2 border-red-900">
+                <h2 class="text-xl font-bold text-red-400 mb-2">Danger Zone</h2>
+                <p class="text-sm text-gray-300 mb-6">Irreversible actions</p>
                 
                 <div class="space-y-4">
                     <button 
                         @click="showDeleteConfirm = true"
-                        class="w-full bg-red-50 text-red-700 py-2 px-4 rounded-lg font-semibold hover:bg-red-100 border border-red-200 transition-colors"
+                        class="w-full bg-red-900 text-red-200 py-2 px-4 rounded-lg font-semibold hover:bg-red-800 border border-red-700 transition-colors"
                     >
                         Delete Account
                     </button>
@@ -186,21 +186,21 @@
                     class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
                     @click.self="showDeleteConfirm = false"
                 >
-                    <div class="bg-white rounded-2xl p-8 max-w-md w-full">
-                        <h3 class="text-2xl font-bold text-gray-900 mb-4">Delete Account?</h3>
-                        <p class="text-gray-600 mb-6">
+                    <div class="bg-gray-800 rounded-2xl p-8 max-w-md w-full border border-gray-700">
+                        <h3 class="text-2xl font-bold text-white mb-4">Delete Account?</h3>
+                        <p class="text-gray-300 mb-6">
                             This action cannot be undone. All your data will be permanently deleted.
                         </p>
                         <form @submit.prevent="deleteAccount" class="space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <label class="block text-sm font-medium text-gray-300 mb-2">
                                     Enter your password to confirm
                                 </label>
                                 <input 
                                     type="password" 
                                     x-model="deletePassword"
                                     required
-                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                    class="w-full px-4 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                     placeholder="Enter password"
                                 >
                             </div>
@@ -211,7 +211,7 @@
                                 <button 
                                     type="button"
                                     @click="showDeleteConfirm = false"
-                                    class="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg font-semibold hover:bg-gray-200"
+                                    class="flex-1 bg-gray-700 text-gray-200 py-2 px-4 rounded-lg font-semibold hover:bg-gray-600"
                                 >
                                     Cancel
                                 </button>

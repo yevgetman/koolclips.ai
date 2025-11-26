@@ -3,31 +3,31 @@
 {% block title %}Home - Viral Clips{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-purple-50">
+<div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
     <!-- Hero Section -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
         <div class="text-center">
-            <h1 class="text-5xl md:text-6xl font-extrabold text-gray-900 mb-6">
-                Create <span class="text-primary-600">Viral Clips</span> 
+            <h1 class="text-5xl md:text-6xl font-extrabold text-white mb-6">
+                Create <span class="text-primary-400">Viral Clips</span> 
                 <br/>with AI Magic
             </h1>
-            <p class="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+            <p class="text-xl text-gray-300 mb-8 max-w-3xl mx-auto">
                 Transform your long videos into engaging short clips automatically. 
                 Our AI identifies the most viral moments and creates perfect clips for social media.
             </p>
             
             {% if user.is_authenticated %}
                 <div class="flex justify-center space-x-4">
-                    <a href="/profile/" class="bg-primary-600 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-primary-700 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200">
+                    <a href="/profile/" class="bg-primary-600 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-primary-500 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200">
                         Go to Dashboard
                     </a>
                 </div>
             {% else %}
                 <div class="flex justify-center space-x-4">
-                    <a href="/register/" class="bg-primary-600 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-primary-700 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200">
+                    <a href="/register/" class="bg-primary-600 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-primary-500 shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200">
                         Get Started Free
                     </a>
-                    <a href="/login/" class="bg-white text-primary-600 px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-50 shadow-lg border-2 border-primary-600 transform hover:-translate-y-1 transition-all duration-200">
+                    <a href="/login/" class="bg-gray-700 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-600 shadow-lg border-2 border-primary-600 transform hover:-translate-y-1 transition-all duration-200">
                         Sign In
                     </a>
                 </div>
@@ -39,41 +39,41 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <!-- Feature 1 -->
-            <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                <div class="w-14 h-14 bg-primary-100 rounded-xl flex items-center justify-center mb-6">
-                    <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-gray-800 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-700">
+                <div class="w-14 h-14 bg-primary-900 rounded-xl flex items-center justify-center mb-6">
+                    <svg class="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                 </div>
-                <h3 class="text-xl font-bold text-gray-900 mb-3">AI-Powered Analysis</h3>
-                <p class="text-gray-600">
+                <h3 class="text-xl font-bold text-white mb-3">AI-Powered Analysis</h3>
+                <p class="text-gray-300">
                     Our advanced AI analyzes your content and identifies the most engaging moments automatically.
                 </p>
             </div>
             
             <!-- Feature 2 -->
-            <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                <div class="w-14 h-14 bg-purple-100 rounded-xl flex items-center justify-center mb-6">
-                    <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-gray-800 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-700">
+                <div class="w-14 h-14 bg-purple-900 rounded-xl flex items-center justify-center mb-6">
+                    <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                 </div>
-                <h3 class="text-xl font-bold text-gray-900 mb-3">Instant Clips</h3>
-                <p class="text-gray-600">
+                <h3 class="text-xl font-bold text-white mb-3">Instant Clips</h3>
+                <p class="text-gray-300">
                     Generate multiple viral-ready clips in minutes, not hours. Perfect for busy content creators.
                 </p>
             </div>
             
             <!-- Feature 3 -->
-            <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300">
-                <div class="w-14 h-14 bg-green-100 rounded-xl flex items-center justify-center mb-6">
-                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-gray-800 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow duration-300 border border-gray-700">
+                <div class="w-14 h-14 bg-green-900 rounded-xl flex items-center justify-center mb-6">
+                    <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                 </div>
-                <h3 class="text-xl font-bold text-gray-900 mb-3">Ready to Share</h3>
-                <p class="text-gray-600">
+                <h3 class="text-xl font-bold text-white mb-3">Ready to Share</h3>
+                <p class="text-gray-300">
                     Optimized for all social platforms. Download and share your clips instantly.
                 </p>
             </div>
@@ -86,11 +86,11 @@
             <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
                 Ready to Go Viral?
             </h2>
-            <p class="text-xl text-primary-100 mb-8">
+            <p class="text-xl text-primary-200 mb-8">
                 Join thousands of creators already using Viral Clips
             </p>
             {% if not user.is_authenticated %}
-                <a href="/register/" class="inline-block bg-white text-primary-600 px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-50 shadow-lg transform hover:-translate-y-1 transition-all duration-200">
+                <a href="/register/" class="inline-block bg-white text-primary-600 px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-100 shadow-lg transform hover:-translate-y-1 transition-all duration-200">
                     Start Creating Now
                 </a>
             {% endif %}
