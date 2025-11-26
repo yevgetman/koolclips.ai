@@ -107,14 +107,17 @@
                         </div>
                     </div>
 
-                    <!-- Parts Grid -->
+                    <!-- Active Parts Progress -->
                     <div class="mt-4">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs text-gray-400 font-medium">Upload Parts</span>
-                            <span class="text-xs text-gray-400" id="parts-counter">0 / 0</span>
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-sm text-gray-300 font-medium">Active Part Uploads</span>
+                            <span class="text-xs text-gray-400" id="parts-counter">0 / 0 completed</span>
                         </div>
-                        <div id="parts-grid" class="grid grid-cols-10 gap-1.5">
-                            <!-- Parts will be dynamically added here -->
+                        <div id="active-parts-container" class="space-y-2">
+                            <!-- Active part progress bars will be shown here -->
+                            <div class="text-center text-sm text-gray-500 py-4">
+                                No active uploads
+                            </div>
                         </div>
                     </div>
 
@@ -479,11 +482,13 @@
         const end = Math.min(start + partSize, selectedFile.size);
         const blob = selectedFile.slice(start, end);
 
-        // Mark part as uploading
-        updatePartStatus(partNumber, 'uploading');
+        // Add progress bar for this part
+        addPartProgressBar(partNumber, blob.size);
 
         try {
             // Get presigned URL for this part
+            updatePartProgress(partNumber, 0, 'Getting upload URL...');
+            
             const urlResponse = await fetch('/api/upload/multipart/urls/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
@@ -505,20 +510,12 @@
 
             const presignedUrl = urlData.urls[0].url;
 
-            // Upload directly to S3 using presigned URL
-            // Note: Don't add headers that weren't part of the presigned URL signature
-            const uploadResponse = await fetch(presignedUrl, {
-                method: 'PUT',
-                body: blob
+            // Upload directly to S3 using XMLHttpRequest for progress tracking
+            updatePartProgress(partNumber, 0, 'Uploading to S3...');
+            
+            const etag = await uploadWithProgress(presignedUrl, blob, (percent) => {
+                updatePartProgress(partNumber, percent, `Uploading... ${formatBytes(blob.size)}`);
             });
-
-            if (!uploadResponse.ok) {
-                updatePartStatus(partNumber, 'error');
-                throw new Error(`Failed to upload part ${partNumber} to S3: ${uploadResponse.statusText}`);
-            }
-
-            // Get ETag from response headers
-            const etag = uploadResponse.headers.get('ETag');
             
             // Record uploaded part
             uploadState.parts.push({
@@ -528,10 +525,13 @@
             uploadState.uploadedParts++;
             uploadState.uploadedBytes += blob.size;
             
-            // Mark part as completed
-            updatePartStatus(partNumber, 'completed');
+            // Mark as complete and remove after brief delay
+            updatePartProgress(partNumber, 100, '✓ Completed');
+            setTimeout(() => removePartProgressBar(partNumber), 500);
+            
         } catch (error) {
-            updatePartStatus(partNumber, 'error');
+            updatePartProgress(partNumber, 0, `❌ Error: ${error.message}`);
+            setTimeout(() => removePartProgressBar(partNumber), 2000);
             throw error;
         }
 
@@ -548,36 +548,103 @@
         );
     }
 
+    function uploadWithProgress(url, blob, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    onProgress(percent);
+                }
+            });
+            
+            // Handle completion
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    // Get ETag from response headers
+                    const etag = xhr.getResponseHeader('ETag');
+                    resolve(etag);
+                } else {
+                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                }
+            });
+            
+            // Handle errors
+            xhr.addEventListener('error', () => {
+                reject(new Error('Network error during upload'));
+            });
+            
+            xhr.addEventListener('abort', () => {
+                reject(new Error('Upload aborted'));
+            });
+            
+            // Open and send the request
+            xhr.open('PUT', url);
+            xhr.send(blob);
+        });
+    }
+
     function initializePartsGrid(numParts) {
-        const partsGrid = document.getElementById('parts-grid');
-        partsGrid.innerHTML = '';
-        
-        // Create a box for each part
-        for (let i = 1; i <= numParts; i++) {
-            const partBox = document.createElement('div');
-            partBox.id = `part-${i}`;
-            partBox.className = 'h-8 bg-gray-700 rounded transition-all duration-300 border border-gray-600';
-            partBox.title = `Part ${i}`;
-            partsGrid.appendChild(partBox);
-        }
+        const container = document.getElementById('active-parts-container');
+        container.innerHTML = '<div class="text-center text-sm text-gray-500 py-4">Preparing upload...</div>';
         
         // Update parts counter
-        document.getElementById('parts-counter').textContent = `0 / ${numParts}`;
+        document.getElementById('parts-counter').textContent = `0 / ${numParts} completed`;
         document.getElementById('active-parts').textContent = '0';
         document.getElementById('uploaded-size').textContent = '0 MB';
         document.getElementById('avg-speed').textContent = '- MB/s';
     }
 
-    function updatePartStatus(partNumber, status) {
-        const partBox = document.getElementById(`part-${partNumber}`);
-        if (!partBox) return;
+    function addPartProgressBar(partNumber, partSize) {
+        const container = document.getElementById('active-parts-container');
         
-        if (status === 'uploading') {
-            partBox.className = 'h-8 bg-primary-500 rounded transition-all duration-300 border border-primary-400 animate-pulse';
-        } else if (status === 'completed') {
-            partBox.className = 'h-8 bg-green-500 rounded transition-all duration-300 border border-green-400';
-        } else if (status === 'error') {
-            partBox.className = 'h-8 bg-red-500 rounded transition-all duration-300 border border-red-400';
+        // Remove "no active uploads" message if present
+        if (container.querySelector('.text-gray-500')) {
+            container.innerHTML = '';
+        }
+        
+        const partElement = document.createElement('div');
+        partElement.id = `part-progress-${partNumber}`;
+        partElement.className = 'bg-gray-700/50 rounded-lg p-3 border border-gray-600';
+        partElement.innerHTML = `
+            <div class="flex justify-between text-xs mb-2">
+                <span class="text-gray-300">Part ${partNumber}</span>
+                <span class="text-primary-400 font-medium" id="part-${partNumber}-percent">0%</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                <div id="part-${partNumber}-bar" class="bg-gradient-to-r from-primary-600 to-primary-400 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+            </div>
+            <div class="text-xs text-gray-500 mt-1" id="part-${partNumber}-status">Preparing...</div>
+        `;
+        
+        container.appendChild(partElement);
+    }
+
+    function updatePartProgress(partNumber, percent, status = null) {
+        const bar = document.getElementById(`part-${partNumber}-bar`);
+        const percentEl = document.getElementById(`part-${partNumber}-percent`);
+        const statusEl = document.getElementById(`part-${partNumber}-status`);
+        
+        if (bar) bar.style.width = `${percent}%`;
+        if (percentEl) percentEl.textContent = `${percent}%`;
+        if (status && statusEl) statusEl.textContent = status;
+    }
+
+    function removePartProgressBar(partNumber) {
+        const partElement = document.getElementById(`part-progress-${partNumber}`);
+        if (partElement) {
+            partElement.style.opacity = '0';
+            partElement.style.transform = 'scale(0.95)';
+            partElement.style.transition = 'all 0.3s ease-out';
+            setTimeout(() => partElement.remove(), 300);
+        }
+        
+        // Show message if no active parts
+        const container = document.getElementById('active-parts-container');
+        if (container.children.length === 0) {
+            container.innerHTML = '<div class="text-center text-sm text-gray-500 py-4">All parts uploaded</div>';
         }
     }
 
@@ -599,7 +666,7 @@
         document.getElementById('progress-bar').style.width = `${percent}%`;
         
         // Update parts counter
-        document.getElementById('parts-counter').textContent = `${uploadState.uploadedParts} / ${uploadState.totalParts}`;
+        document.getElementById('parts-counter').textContent = `${uploadState.uploadedParts} / ${uploadState.totalParts} completed`;
         
         // Update stats
         document.getElementById('uploaded-size').textContent = formatBytes(uploadState.uploadedBytes);
