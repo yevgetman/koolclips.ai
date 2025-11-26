@@ -30,3 +30,9 @@ def profile_page(request):
 def home_page(request):
     """Render the home page"""
     return render(request, 'home.html')
+
+
+@login_required
+def test_stage1_upload(request):
+    """Test page for Stage 1: Video upload and pre-processing"""
+    return render(request, 'test/stage1_upload.html')

@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+
+{% block title %}Test Stage 1: Video Upload - Viral Clips{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">🧪 Stage 1 Test: Video Upload</h1>
+            <p class="text-gray-400">Upload and pre-process a large video file (up to 5GB) to CloudCube</p>
+            <div class="mt-4 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+                <p class="text-yellow-300 text-sm">
+                    <strong>Note:</strong> This is a test page for debugging. It will be removed later.
+                </p>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <!-- File Picker -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Select Video File
+                </label>
+                <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-600 border-dashed rounded-lg hover:border-primary-500 transition-colors cursor-pointer"
+                     id="drop-zone">
+                    <div class="space-y-1 text-center">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <div class="flex text-sm text-gray-400">
+                            <label for="file-upload" class="relative cursor-pointer rounded-md font-medium text-primary-400 hover:text-primary-300 focus-within:outline-none">
+                                <span>Upload a file</span>
+                                <input id="file-upload" name="file-upload" type="file" class="sr-only" accept="video/*,audio/*">
+                            </label>
+                            <p class="pl-1">or drag and drop</p>
+                        </div>
+                        <p class="text-xs text-gray-500">
+                            Video or audio files up to 5GB
+                        </p>
+                    </div>
+                </div>
+                <div id="file-info" class="mt-4 hidden">
+                    <div class="bg-gray-700 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <svg class="h-8 w-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-medium text-white" id="file-name"></p>
+                                    <p class="text-xs text-gray-400" id="file-size"></p>
+                                </div>
+                            </div>
+                            <button id="remove-file" class="text-red-400 hover:text-red-300">
+                                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Settings -->
+            <div class="mb-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Part Size (MB)
+                    </label>
+                    <input type="number" id="part-size" value="200" min="5" max="500" 
+                           class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                    <p class="mt-1 text-xs text-gray-400">Larger parts = fewer requests but less granular progress. Default: 200MB (recommended)</p>
+                </div>
+            </div>
+
+            <!-- Upload Button -->
+            <div class="mb-6">
+                <button id="upload-btn" disabled
+                        class="w-full bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Start Upload
+                </button>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progress-section" class="hidden mb-6">
+                <div class="space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-300" id="progress-status">Preparing upload...</span>
+                        <span class="text-primary-400 font-medium" id="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div id="progress-bar" class="bg-gradient-to-r from-primary-600 to-primary-400 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-400">
+                        <span id="upload-speed">-</span>
+                        <span id="time-remaining">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <div id="result-section" class="hidden">
+                <div class="bg-green-900/20 border border-green-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-green-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-green-300 mb-2">Upload Successful!</h3>
+                            <div class="space-y-2">
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Job ID:</p>
+                                    <p class="text-sm text-white font-mono bg-gray-700 px-3 py-2 rounded" id="result-job-id"></p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Public URL:</p>
+                                    <a id="result-url" href="#" target="_blank" 
+                                       class="text-sm text-primary-400 hover:text-primary-300 break-all underline font-mono bg-gray-700 px-3 py-2 rounded block">
+                                    </a>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Upload Details:</p>
+                                    <div class="text-sm text-gray-300 bg-gray-700 px-3 py-2 rounded space-y-1">
+                                        <p>File Type: <span id="result-file-type" class="font-medium"></span></p>
+                                        <p>Upload Time: <span id="result-upload-time" class="font-medium"></span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Section -->
+            <div id="error-section" class="hidden">
+                <div class="bg-red-900/20 border border-red-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-red-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-red-300 mb-2">Upload Failed</h3>
+                            <p class="text-sm text-gray-300" id="error-message"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Upload state
+    let selectedFile = null;
+    let uploadState = {
+        uploadId: null,
+        s3Key: null,
+        jobId: null,
+        parts: [],
+        uploadedParts: 0,
+        totalParts: 0,
+        uploadedBytes: 0,
+        totalBytes: 0,
+        startTime: null,
+        isUploading: false
+    };
+
+    // DOM elements
+    const fileInput = document.getElementById('file-upload');
+    const dropZone = document.getElementById('drop-zone');
+    const fileInfo = document.getElementById('file-info');
+    const uploadBtn = document.getElementById('upload-btn');
+    const progressSection = document.getElementById('progress-section');
+    const resultSection = document.getElementById('result-section');
+    const errorSection = document.getElementById('error-section');
+    const removeFileBtn = document.getElementById('remove-file');
+
+    // File selection
+    fileInput.addEventListener('change', handleFileSelect);
+    removeFileBtn.addEventListener('click', clearFile);
+    uploadBtn.addEventListener('click', startUpload);
+
+    // Drag and drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-primary-500', 'bg-gray-700');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-primary-500', 'bg-gray-700');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-primary-500', 'bg-gray-700');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFile(files[0]);
+        }
+    });
+
+    function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (file) {
+            handleFile(file);
+        }
+    }
+
+    function handleFile(file) {
+        // Validate file type
+        const validTypes = ['video/', 'audio/'];
+        if (!validTypes.some(type => file.type.startsWith(type))) {
+            showToast('Please select a video or audio file', 'error');
+            return;
+        }
+
+        // Validate file size (5GB limit)
+        const maxSize = 5 * 1024 * 1024 * 1024; // 5GB
+        if (file.size > maxSize) {
+            showToast('File too large. Maximum size is 5GB', 'error');
+            return;
+        }
+
+        selectedFile = file;
+        displayFileInfo(file);
+        uploadBtn.disabled = false;
+    }
+
+    function displayFileInfo(file) {
+        document.getElementById('file-name').textContent = file.name;
+        document.getElementById('file-size').textContent = formatBytes(file.size);
+        fileInfo.classList.remove('hidden');
+        dropZone.classList.add('hidden');
+    }
+
+    function clearFile() {
+        selectedFile = null;
+        fileInput.value = '';
+        fileInfo.classList.add('hidden');
+        dropZone.classList.remove('hidden');
+        uploadBtn.disabled = true;
+        hideAllSections();
+    }
+
+    function hideAllSections() {
+        progressSection.classList.add('hidden');
+        resultSection.classList.add('hidden');
+        errorSection.classList.add('hidden');
+    }
+
+    async function startUpload() {
+        if (!selectedFile || uploadState.isUploading) return;
+
+        // Reset state
+        hideAllSections();
+        uploadState = {
+            uploadId: null,
+            s3Key: null,
+            jobId: null,
+            parts: [],
+            uploadedParts: 0,
+            totalParts: 0,
+            uploadedBytes: 0,
+            totalBytes: selectedFile.size,
+            startTime: Date.now(),
+            isUploading: true
+        };
+
+        // Show progress
+        progressSection.classList.remove('hidden');
+        uploadBtn.disabled = true;
+        updateProgress(0, 'Initiating upload...');
+
+        try {
+            // Step 1: Initiate multipart upload
+            const partSizeMB = parseInt(document.getElementById('part-size').value);
+            const partSize = partSizeMB * 1024 * 1024; // Convert to bytes
+            
+            const initResponse = await fetch('/api/upload/multipart/initiate/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    filename: selectedFile.name,
+                    content_type: selectedFile.type,
+                    file_size: selectedFile.size,
+                    part_size: partSize
+                })
+            });
+
+            const initData = await initResponse.json();
+            if (!initData.success) {
+                throw new Error(initData.error || 'Failed to initiate upload');
+            }
+
+            uploadState.uploadId = initData.upload_id;
+            uploadState.s3Key = initData.s3_key;
+            uploadState.jobId = initData.job_id;
+            uploadState.totalParts = initData.num_parts;
+
+            updateProgress(5, `Uploading ${uploadState.totalParts} parts...`);
+
+            // Step 2: Upload parts in parallel (with concurrency limit)
+            const concurrency = 6; // Upload 6 parts simultaneously for maximum bandwidth
+            await uploadPartsInParallel(partSize, concurrency);
+
+            // Step 3: Complete multipart upload
+            updateProgress(95, 'Finalizing upload...');
+            const completeResponse = await fetch('/api/upload/multipart/complete/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    upload_id: uploadState.uploadId,
+                    s3_key: uploadState.s3Key,
+                    parts: uploadState.parts
+                })
+            });
+
+            const completeData = await completeResponse.json();
+            if (!completeData.success) {
+                throw new Error(completeData.error || 'Failed to complete upload');
+            }
+
+            updateProgress(100, 'Upload complete!');
+            
+            // Display result
+            showResult(completeData);
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            showError(error.message);
+            
+            // Try to abort the upload
+            if (uploadState.uploadId && uploadState.s3Key) {
+                try {
+                    await fetch('/api/upload/multipart/abort/', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                            upload_id: uploadState.uploadId,
+                            s3_key: uploadState.s3Key
+                        })
+                    });
+                } catch (abortError) {
+                    console.error('Failed to abort upload:', abortError);
+                }
+            }
+        } finally {
+            uploadState.isUploading = false;
+            uploadBtn.disabled = false;
+        }
+    }
+
+    async function uploadPartsInParallel(partSize, concurrency) {
+        const uploadQueue = [];
+        
+        // Create upload tasks for all parts
+        for (let partNumber = 1; partNumber <= uploadState.totalParts; partNumber++) {
+            uploadQueue.push(partNumber);
+        }
+
+        // Process parts with concurrency limit
+        const activeUploads = [];
+        let queueIndex = 0;
+
+        while (queueIndex < uploadQueue.length || activeUploads.length > 0) {
+            // Start new uploads up to concurrency limit
+            while (activeUploads.length < concurrency && queueIndex < uploadQueue.length) {
+                const partNumber = uploadQueue[queueIndex++];
+                const uploadPromise = uploadPart(partNumber, partSize);
+                activeUploads.push(uploadPromise);
+            }
+
+            // Wait for at least one upload to complete
+            if (activeUploads.length > 0) {
+                const completed = await Promise.race(activeUploads);
+                const index = activeUploads.findIndex(p => p === completed);
+                activeUploads.splice(index, 1);
+            }
+        }
+    }
+
+    async function uploadPart(partNumber, partSize) {
+        const start = (partNumber - 1) * partSize;
+        const end = Math.min(start + partSize, selectedFile.size);
+        const blob = selectedFile.slice(start, end);
+
+        // Get presigned URL for this part
+        const urlResponse = await fetch('/api/upload/multipart/urls/', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                upload_id: uploadState.uploadId,
+                s3_key: uploadState.s3Key,
+                part_numbers: [partNumber]
+            })
+        });
+
+        const urlData = await urlResponse.json();
+        if (!urlData.success || !urlData.urls || urlData.urls.length === 0) {
+            throw new Error(`Failed to get upload URL for part ${partNumber}`);
+        }
+
+        const presignedUrl = urlData.urls[0].url;
+
+        // Upload part to S3
+        const uploadResponse = await fetch(presignedUrl, {
+            method: 'PUT',
+            body: blob,
+            headers: {
+                'Content-Type': selectedFile.type
+            }
+        });
+
+        if (!uploadResponse.ok) {
+            throw new Error(`Failed to upload part ${partNumber}: ${uploadResponse.statusText}`);
+        }
+
+        const etag = uploadResponse.headers.get('ETag');
+        
+        // Record uploaded part
+        uploadState.parts.push({
+            PartNumber: partNumber,
+            ETag: etag
+        });
+        uploadState.uploadedParts++;
+        uploadState.uploadedBytes += blob.size;
+
+        // Update progress
+        const percent = Math.round((uploadState.uploadedBytes / uploadState.totalBytes) * 100);
+        const speed = calculateSpeed();
+        const remaining = calculateTimeRemaining(speed);
+        
+        updateProgress(
+            percent,
+            `Uploading part ${uploadState.uploadedParts} of ${uploadState.totalParts}`,
+            speed,
+            remaining
+        );
+    }
+
+    function calculateSpeed() {
+        const elapsedSeconds = (Date.now() - uploadState.startTime) / 1000;
+        if (elapsedSeconds === 0) return 0;
+        return uploadState.uploadedBytes / elapsedSeconds; // bytes per second
+    }
+
+    function calculateTimeRemaining(speed) {
+        if (speed === 0) return Infinity;
+        const remainingBytes = uploadState.totalBytes - uploadState.uploadedBytes;
+        return remainingBytes / speed; // seconds
+    }
+
+    function updateProgress(percent, status, speed = null, timeRemaining = null) {
+        document.getElementById('progress-percent').textContent = `${percent}%`;
+        document.getElementById('progress-status').textContent = status;
+        document.getElementById('progress-bar').style.width = `${percent}%`;
+        
+        if (speed !== null) {
+            document.getElementById('upload-speed').textContent = `${formatBytes(speed)}/s`;
+        }
+        
+        if (timeRemaining !== null && timeRemaining !== Infinity) {
+            document.getElementById('time-remaining').textContent = formatTime(timeRemaining);
+        }
+    }
+
+    function showResult(data) {
+        const uploadTime = ((Date.now() - uploadState.startTime) / 1000).toFixed(1);
+        
+        // Use the public URL from the API response
+        const publicUrl = data.public_url || data.location || 'URL not available';
+        
+        document.getElementById('result-job-id').textContent = uploadState.jobId;
+        document.getElementById('result-url').textContent = publicUrl;
+        document.getElementById('result-url').href = publicUrl;
+        document.getElementById('result-file-type').textContent = selectedFile.type;
+        document.getElementById('result-upload-time').textContent = `${uploadTime} seconds`;
+        
+        progressSection.classList.add('hidden');
+        resultSection.classList.remove('hidden');
+        
+        showToast('Upload completed successfully!', 'success');
+    }
+
+    function showError(message) {
+        document.getElementById('error-message').textContent = message;
+        progressSection.classList.add('hidden');
+        errorSection.classList.remove('hidden');
+        showToast(message, 'error');
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function formatTime(seconds) {
+        if (seconds < 60) return `${Math.round(seconds)}s`;
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.round(seconds % 60);
+        return `${minutes}m ${secs}s`;
+    }
+</script>
+{% endblock %}

@@ -463,9 +463,14 @@ def complete_multipart_upload(request):
             parts=parts
         )
         
+        # Get the public URL for the uploaded file
+        public_url = s3_service.get_public_url_from_key(s3_key)
+        
         return Response({
             'success': True,
             'location': result.get('Location', ''),
+            'public_url': public_url,
+            's3_key': s3_key,
             'etag': result.get('ETag', '')
         }, status=status.HTTP_200_OK)
         
