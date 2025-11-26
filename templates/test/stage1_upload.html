@@ -69,9 +69,9 @@
                     <label class="block text-sm font-medium text-gray-300 mb-2">
                         Part Size (MB)
                     </label>
-                    <input type="number" id="part-size" value="10" min="5" max="50" 
+                    <input type="number" id="part-size" value="100" min="5" max="500" 
                            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent">
-                    <p class="mt-1 text-xs text-gray-400">For proxy uploads, use smaller chunks (10MB) to avoid timeouts. Max: 50MB</p>
+                    <p class="mt-1 text-xs text-gray-400">Direct S3 upload with presigned URLs. Larger parts = faster uploads. Default: 100MB (recommended)</p>
                 </div>
             </div>
 
@@ -388,33 +388,43 @@
         const end = Math.min(start + partSize, selectedFile.size);
         const blob = selectedFile.slice(start, end);
 
-        // Upload part via proxy endpoint (server-side upload to avoid CORS)
-        const formData = new FormData();
-        formData.append('chunk', blob);
-        formData.append('upload_id', uploadState.uploadId);
-        formData.append('s3_key', uploadState.s3Key);
-        formData.append('part_number', partNumber);
-
-        const uploadResponse = await fetch('/api/upload/proxy-chunk/', {
+        // Get presigned URL for this part
+        const urlResponse = await fetch('/api/upload/multipart/urls/', {
             method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                upload_id: uploadState.uploadId,
+                s3_key: uploadState.s3Key,
+                part_numbers: [partNumber]
+            })
+        });
+
+        if (!urlResponse.ok) {
+            throw new Error(`Failed to get upload URL for part ${partNumber}`);
+        }
+
+        const urlData = await urlResponse.json();
+        if (!urlData.success || !urlData.urls || urlData.urls.length === 0) {
+            throw new Error(`No upload URL received for part ${partNumber}`);
+        }
+
+        const presignedUrl = urlData.urls[0].url;
+
+        // Upload directly to S3 using presigned URL
+        const uploadResponse = await fetch(presignedUrl, {
+            method: 'PUT',
+            body: blob,
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            },
-            credentials: 'same-origin',
-            body: formData
+                'Content-Type': selectedFile.type || 'application/octet-stream'
+            }
         });
 
         if (!uploadResponse.ok) {
-            const errorData = await uploadResponse.json();
-            throw new Error(`Failed to upload part ${partNumber}: ${errorData.error || uploadResponse.statusText}`);
+            throw new Error(`Failed to upload part ${partNumber} to S3: ${uploadResponse.statusText}`);
         }
 
-        const uploadData = await uploadResponse.json();
-        if (!uploadData.success) {
-            throw new Error(`Failed to upload part ${partNumber}: ${uploadData.error}`);
-        }
-
-        const etag = uploadData.etag;
+        // Get ETag from response headers
+        const etag = uploadResponse.headers.get('ETag');
         
         // Record uploaded part
         uploadState.parts.push({
