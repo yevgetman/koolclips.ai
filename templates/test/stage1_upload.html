@@ -192,6 +192,7 @@
 <script>
     // Upload state
     let selectedFile = null;
+    let activeUploads = []; // Track active parallel uploads
     let uploadState = {
         uploadId: null,
         s3Key: null,
@@ -341,6 +342,7 @@
 
         // Reset state
         hideAllSections();
+        activeUploads = []; // Clear active uploads
         uploadState = {
             uploadId: null,
             s3Key: null,
@@ -452,7 +454,7 @@
         }
 
         // Process parts with concurrency limit
-        const activeUploads = [];
+        activeUploads = []; // Reset the global activeUploads array
         let queueIndex = 0;
 
         while (queueIndex < uploadQueue.length || activeUploads.length > 0) {
