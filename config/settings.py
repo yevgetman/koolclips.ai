@@ -33,6 +33,14 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,koolclips.herokuapp.com,.herokuapp.com,www.koolclips.ai,koolclips.ai').split(',')
 
+# Security Settings - Force HTTPS in production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True  # Redirect all HTTP to HTTPS
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # Heroku uses X-Forwarded-Proto
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 # CSRF trusted origins for Django 4.x (required for custom domains)
 CSRF_TRUSTED_ORIGINS = [
     'https://www.koolclips.ai',
