@@ -440,7 +440,7 @@
                 throw new Error('Failed to get upload URL');
             }
 
-            // Step 2: Upload file
+            // Step 2: Upload file using presigned POST
             updateUploadProgress(10, 'Uploading file...');
             
             await new Promise((resolve, reject) => {
@@ -451,11 +451,30 @@
                         updateUploadProgress(percent, 'Uploading file...');
                     }
                 };
-                xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error('Upload failed'));
-                xhr.onerror = () => reject(new Error('Upload failed'));
-                xhr.open('PUT', presignData.upload_url);
-                xhr.setRequestHeader('Content-Type', selectedFile.type);
-                xhr.send(selectedFile);
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve();
+                    } else {
+                        reject(new Error(`Upload failed with status ${xhr.status}`));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('Upload failed - network error'));
+                xhr.open('POST', presignData.upload_url);
+                
+                // Build FormData with presigned fields
+                const formData = new FormData();
+                
+                // Add all presigned fields first (order matters!)
+                if (presignData.upload_fields) {
+                    Object.entries(presignData.upload_fields).forEach(([key, value]) => {
+                        formData.append(key, value);
+                    });
+                }
+                
+                // Add file last (must be after all other fields)
+                formData.append('file', selectedFile);
+                
+                xhr.send(formData);
             });
 
             // Step 3: Extract audio (if video)

@@ -239,11 +239,17 @@ def get_presigned_upload_url(request):
             public=True
         )
         
+        # Build CloudFront URL if available
+        cloudfront_url = None
+        if s3_service.cloudfront_domain:
+            cloudfront_url = f"https://{s3_service.cloudfront_domain}/{s3_key}"
+        
         return Response({
             'success': True,
             'upload_url': presigned_data['url'],
             'upload_fields': presigned_data['fields'],
             's3_key': presigned_data['s3_key'],
+            'cloudfront_url': cloudfront_url,
             'job_id': job_id,
             'file_type': file_type,
             'expires_in': 3600  # seconds
