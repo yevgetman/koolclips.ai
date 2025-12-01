@@ -59,18 +59,31 @@
                         <a href="/profile/" class="text-gray-300 hover:text-primary-400 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                             Profile
                         </a>
-                        <a href="/test/stage1/" class="text-yellow-300 hover:text-yellow-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                            🧪 Stage 1
-                        </a>
-                        <a href="/test/stage2/" class="text-purple-300 hover:text-purple-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                            🧪 Stage 2
-                        </a>
-                        <a href="/test/stage3/" class="text-green-300 hover:text-green-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                            🧪 Stage 3
-                        </a>
-                        <a href="/test/stage4/" class="text-blue-300 hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                            🧪 Stage 4
-                        </a>
+                        <!-- Testing Dropdown -->
+                        <div class="relative" id="testing-dropdown">
+                            <button onclick="toggleTestingDropdown()" class="text-orange-300 hover:text-orange-200 px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-1">
+                                <span>🧪 Testing</span>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            <div id="testing-menu" class="hidden absolute right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50">
+                                <div class="py-1">
+                                    <a href="/test/stage1/" class="block px-4 py-2 text-sm text-yellow-300 hover:bg-gray-700 transition-colors">
+                                        Stage 1: Upload & Extract
+                                    </a>
+                                    <a href="/test/stage2/" class="block px-4 py-2 text-sm text-purple-300 hover:bg-gray-700 transition-colors">
+                                        Stage 2: Transcription
+                                    </a>
+                                    <a href="/test/stage3/" class="block px-4 py-2 text-sm text-green-300 hover:bg-gray-700 transition-colors">
+                                        Stage 3: Segment Selection
+                                    </a>
+                                    <a href="/test/stage4/" class="block px-4 py-2 text-sm text-blue-300 hover:bg-gray-700 transition-colors">
+                                        Stage 4: Clip Editing
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
                         <button onclick="handleLogout()" class="bg-red-900 text-red-200 hover:bg-red-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                             Logout
                         </button>
@@ -129,6 +142,21 @@
                 setTimeout(() => toast.remove(), 300);
             }, 5000);
         }
+        
+        // Testing dropdown toggle
+        function toggleTestingDropdown() {
+            const menu = document.getElementById('testing-menu');
+            menu.classList.toggle('hidden');
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('testing-dropdown');
+            const menu = document.getElementById('testing-menu');
+            if (dropdown && menu && !dropdown.contains(event.target)) {
+                menu.classList.add('hidden');
+            }
+        });
         
         // Logout function
         async function handleLogout() {
