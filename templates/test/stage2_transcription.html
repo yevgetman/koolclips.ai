@@ -31,19 +31,6 @@
                 </p>
             </div>
 
-            <!-- Optional Job ID -->
-            <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-300 mb-2">
-                    Job ID <span class="text-gray-500">(optional)</span>
-                </label>
-                <input type="text" id="job-id" 
-                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                       placeholder="Leave blank to auto-generate">
-                <p class="mt-2 text-xs text-gray-500">
-                    Used to organize the transcript file in S3
-                </p>
-            </div>
-
             <!-- Transcribe Button -->
             <div class="mb-6">
                 <button id="transcribe-btn"
@@ -150,7 +137,6 @@
 <script>
     // DOM elements
     const audioUrlInput = document.getElementById('audio-url');
-    const jobIdInput = document.getElementById('job-id');
     const transcribeBtn = document.getElementById('transcribe-btn');
     const progressSection = document.getElementById('progress-section');
     const resultSection = document.getElementById('result-section');
@@ -182,7 +168,6 @@
         if (isProcessing) return;
 
         const audioUrl = audioUrlInput.value.trim();
-        const jobId = jobIdInput.value.trim() || null;
 
         // Validate URL
         if (!audioUrl) {
@@ -212,8 +197,7 @@
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
-                    audio_url: audioUrl,
-                    job_id: jobId
+                    audio_url: audioUrl
                 })
             });
 
