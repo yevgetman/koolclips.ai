@@ -1713,35 +1713,81 @@ def _run_workflow(workflow_id):
     try:
         # ============ STAGE 2: TRANSCRIPTION ============
         workflow['stage'] = 2
-        workflow['stage_detail'] = 'Sending audio to ElevenLabs...'
+        workflow['stage_detail'] = 'Downloading audio file...'
         workflow['progress'] = 10
         
         logger.info(f"Workflow {workflow_id}: Starting transcription")
         
+        # Download audio file from URL (same as test page)
+        audio_url = workflow['audio_url']
+        logger.info(f"Workflow {workflow_id}: Downloading audio from: {audio_url}")
+        
+        dl_response = http_requests.get(audio_url, stream=True, timeout=120)
+        dl_response.raise_for_status()
+        
+        # Determine file extension
+        content_type = dl_response.headers.get('Content-Type', '')
+        if 'audio/mpeg' in content_type or audio_url.endswith('.mp3'):
+            ext = '.mp3'
+        elif 'audio/wav' in content_type or audio_url.endswith('.wav'):
+            ext = '.wav'
+        else:
+            ext = '.mp3'
+        
+        # Save to temp file
+        fd, temp_audio = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        
+        with open(temp_audio, 'wb') as f:
+            for chunk in dl_response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        logger.info(f"Workflow {workflow_id}: Audio downloaded to: {temp_audio}")
+        
+        workflow['stage_detail'] = 'Transcribing with ElevenLabs...'
+        workflow['progress'] = 15
+        
+        # Transcribe using ElevenLabs (same as test page)
         elevenlabs = ElevenLabsService()
-        transcript_result = elevenlabs.transcribe_audio_from_url(workflow['audio_url'])
+        transcript_data = elevenlabs.transcribe_video(temp_audio)
+        
+        # Clean up temp audio file
+        if os.path.exists(temp_audio):
+            os.remove(temp_audio)
         
         workflow['stage_detail'] = 'Saving transcript...'
         workflow['progress'] = 25
+        
+        # Prepare transcript JSON (same format as test page)
+        transcript_result = {
+            'workflow_id': workflow_id,
+            'audio_url': audio_url,
+            'transcript': transcript_data,
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%S')
+        }
         
         # Save transcript to S3
         if S3Service.is_s3_configured():
             s3_service = S3Service()
             transcript_key = f"transcripts/{workflow_id}/transcript.json"
             
-            fd, temp_transcript = tempfile.mkstemp(suffix='.json')
-            os.close(fd)
+            # Convert to JSON bytes and upload
+            json_content = json.dumps(transcript_result, indent=2, ensure_ascii=False)
+            json_bytes = json_content.encode('utf-8')
             
-            with open(temp_transcript, 'w') as f:
-                json.dump(transcript_result, f, indent=2)
-            
-            s3_service.upload_file(temp_transcript, transcript_key)
-            os.remove(temp_transcript)
+            s3_service.upload_file_content(
+                json_bytes,
+                transcript_key,
+                content_type='application/json'
+            )
             
             if s3_service.cloudfront_domain:
                 workflow['transcript_url'] = f"https://{s3_service.cloudfront_domain}/{transcript_key}"
             else:
                 workflow['transcript_url'] = s3_service.get_public_url_from_key(transcript_key)
+        
+        # Store transcript data for Stage 3
+        workflow['transcript_data'] = transcript_result
         
         logger.info(f"Workflow {workflow_id}: Transcription complete")
         
@@ -1753,8 +1799,15 @@ def _run_workflow(workflow_id):
         logger.info(f"Workflow {workflow_id}: Starting segment analysis")
         
         llm = LLMService(provider=workflow['provider'], model=workflow['model'])
+        
+        # Extract transcript data (same as test page - handle wrapped format)
+        if 'transcript' in transcript_result:
+            transcript_for_llm = transcript_result['transcript']
+        else:
+            transcript_for_llm = transcript_result
+        
         segments = llm.analyze_transcript(
-            transcript_data=transcript_result,
+            transcript_data=transcript_for_llm,
             num_segments=workflow['num_segments'],
             max_duration=workflow['max_duration'] or 300,
             custom_instructions=workflow['custom_instructions']
