@@ -420,7 +420,7 @@
             // Step 1: Get presigned URL
             updateUploadProgress(5, 'Getting upload URL...');
             
-            const presignResponse = await fetch('/api/upload/presigned/', {
+            const presignResponse = await fetch('/api/upload/presigned-url/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
@@ -429,6 +429,11 @@
                     size: selectedFile.size
                 })
             });
+
+            if (!presignResponse.ok) {
+                const errorData = await presignResponse.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to get upload URL');
+            }
 
             const presignData = await presignResponse.json();
             if (!presignData.upload_url) {
