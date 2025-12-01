@@ -382,8 +382,8 @@
             return;
         }
 
-        if (file.size > 500 * 1024 * 1024) {
-            showToast('File size must be under 500MB', 'error');
+        if (file.size > 5 * 1024 * 1024 * 1024) {
+            showToast('File size must be under 5GB', 'error');
             return;
         }
 
