@@ -62,12 +62,14 @@
                 </div>
             </div>
 
-            <!-- Load Segments Button -->
-            <div class="mb-6">
-                <button id="load-segments-btn"
-                        class="w-full bg-gray-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    Load Segments JSON
-                </button>
+            <!-- Loading indicator for segments -->
+            <div id="segments-loading" class="hidden mb-6">
+                <div class="flex items-center space-x-2 text-gray-400">
+                    <svg class="h-5 w-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span class="text-sm">Loading segments...</span>
+                </div>
             </div>
 
             <!-- Create Clip Button -->
@@ -166,9 +168,9 @@
     // DOM elements
     const videoUrlInput = document.getElementById('video-url');
     const segmentsUrlInput = document.getElementById('segments-url');
-    const loadSegmentsBtn = document.getElementById('load-segments-btn');
     const createClipBtn = document.getElementById('create-clip-btn');
     const segmentPreview = document.getElementById('segment-preview');
+    const segmentsLoading = document.getElementById('segments-loading');
     const progressSection = document.getElementById('progress-section');
     const resultSection = document.getElementById('result-section');
     const errorSection = document.getElementById('error-section');
@@ -176,10 +178,20 @@
     // State
     let isProcessing = false;
     let loadedSegment = null;
+    let loadDebounceTimer = null;
 
     // Event listeners
-    loadSegmentsBtn.addEventListener('click', loadSegments);
+    segmentsUrlInput.addEventListener('input', debounceLoadSegments);
+    segmentsUrlInput.addEventListener('paste', () => setTimeout(debounceLoadSegments, 100));
     createClipBtn.addEventListener('click', createClip);
+    
+    // Debounce the loading to avoid too many requests while typing
+    function debounceLoadSegments() {
+        if (loadDebounceTimer) {
+            clearTimeout(loadDebounceTimer);
+        }
+        loadDebounceTimer = setTimeout(loadSegments, 500);
+    }
 
     function hideAllSections() {
         progressSection.classList.add('hidden');
@@ -195,13 +207,19 @@
     async function loadSegments() {
         const segmentsUrl = segmentsUrlInput.value.trim();
         
-        if (!segmentsUrl) {
-            showError('Please enter a segments JSON URL');
+        // Reset state if URL is empty or invalid
+        if (!segmentsUrl || (!segmentsUrl.startsWith('http://') && !segmentsUrl.startsWith('https://'))) {
+            loadedSegment = null;
+            segmentPreview.classList.add('hidden');
+            segmentsLoading.classList.add('hidden');
+            createClipBtn.disabled = true;
             return;
         }
 
-        loadSegmentsBtn.disabled = true;
-        loadSegmentsBtn.textContent = 'Loading...';
+        // Show loading indicator
+        segmentsLoading.classList.remove('hidden');
+        segmentPreview.classList.add('hidden');
+        createClipBtn.disabled = true;
 
         try {
             const response = await fetch(segmentsUrl);
@@ -228,6 +246,7 @@
             document.getElementById('preview-duration').textContent = 
                 `Duration: ${formatDuration(loadedSegment.duration || (loadedSegment.end_time - loadedSegment.start_time))}`;
             
+            segmentsLoading.classList.add('hidden');
             segmentPreview.classList.remove('hidden');
             createClipBtn.disabled = false;
             
@@ -235,13 +254,14 @@
 
         } catch (error) {
             console.error('Load segments error:', error);
-            showError(error.message);
+            segmentsLoading.classList.add('hidden');
             loadedSegment = null;
             segmentPreview.classList.add('hidden');
             createClipBtn.disabled = true;
-        } finally {
-            loadSegmentsBtn.disabled = false;
-            loadSegmentsBtn.textContent = 'Load Segments JSON';
+            // Only show error if it looks like a valid URL was entered
+            if (segmentsUrl.includes('.json')) {
+                showToast(`Failed to load segments: ${error.message}`, 'error');
+            }
         }
     }
 
@@ -264,7 +284,7 @@
         hideAllSections();
         isProcessing = true;
         createClipBtn.disabled = true;
-        loadSegmentsBtn.disabled = true;
+        segmentsUrlInput.disabled = true;
         
         // Show progress
         progressSection.classList.remove('hidden');
@@ -302,7 +322,7 @@
         } finally {
             isProcessing = false;
             createClipBtn.disabled = false;
-            loadSegmentsBtn.disabled = false;
+            segmentsUrlInput.disabled = false;
         }
     }
 
