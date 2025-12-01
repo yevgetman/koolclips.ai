@@ -124,10 +124,12 @@
 
         <!-- Navigation -->
         <div class="mt-6 flex justify-between">
-            <a href="{% url 'test-stage1' %}" class="text-gray-400 hover:text-white transition-colors">
+            <a href="{% url 'test-stage1' %}" class="text-yellow-400 hover:text-yellow-300 transition-colors">
                 ← Stage 1: Upload
             </a>
-            <span class="text-gray-600">Stage 3: Analysis (Coming Soon) →</span>
+            <a href="{% url 'test-stage3' %}" class="text-green-400 hover:text-green-300 transition-colors">
+                Stage 3: Segments →
+            </a>
         </div>
     </div>
 </div>

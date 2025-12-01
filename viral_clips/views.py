@@ -19,6 +19,7 @@ from .serializers import (
 from .services.s3_service import S3Service
 from .services.preprocessing_service import PreprocessingService
 from .services.elevenlabs_service import ElevenLabsService
+from .services.llm_service import LLMService
 from .utils import detect_file_type
 
 logger = logging.getLogger(__name__)
@@ -1253,3 +1254,164 @@ def transcribe_audio(request):
                 logger.info(f"Cleaned up temp audio: {temp_audio}")
             except Exception as e:
                 logger.warning(f"Failed to clean up temp audio: {e}")
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def analyze_segments(request):
+    """
+    Analyze transcript and select viral segments using LLM (Stage 3)
+    
+    Downloads transcript JSON from URL, sends to LLM for analysis,
+    uploads the segments JSON to S3, and returns the public URL.
+    
+    POST /api/analyze-segments/
+    Body: {
+        "transcript_url": "https://cloudfront.net/.../transcript.json",
+        "provider": "anthropic",  # or "openai"
+        "num_segments": 3,
+        "max_duration": 300,  # seconds
+        "custom_instructions": null  # optional
+    }
+    
+    Returns: {
+        "success": true,
+        "segments_url": "https://cloudfront.net/.../segments.json",
+        "segments": [...],
+        "provider": "anthropic",
+        "model": "claude-3-opus-20240229",
+        "processing_time": 15.3
+    }
+    """
+    import time
+    import requests
+    
+    start_time = time.time()
+    
+    try:
+        # Get request data
+        transcript_url = request.data.get('transcript_url')
+        provider = request.data.get('provider', 'anthropic')
+        num_segments = request.data.get('num_segments', 3)
+        max_duration = request.data.get('max_duration', 300)
+        custom_instructions = request.data.get('custom_instructions')
+        
+        if not transcript_url:
+            return Response({
+                'success': False,
+                'error': 'transcript_url is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate provider
+        if provider not in ['openai', 'anthropic']:
+            return Response({
+                'success': False,
+                'error': 'provider must be "openai" or "anthropic"'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Starting segment analysis with {provider}: {transcript_url}")
+        
+        # Download transcript JSON from URL
+        logger.info(f"Downloading transcript from: {transcript_url}")
+        try:
+            response = requests.get(transcript_url, timeout=60)
+            response.raise_for_status()
+            transcript_json = response.json()
+        except requests.exceptions.RequestException as e:
+            return Response({
+                'success': False,
+                'error': f'Failed to download transcript: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except json.JSONDecodeError as e:
+            return Response({
+                'success': False,
+                'error': f'Invalid JSON in transcript file: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Extract transcript data (handle both direct format and wrapped format from Stage 2)
+        if 'transcript' in transcript_json:
+            transcript_data = transcript_json['transcript']
+        else:
+            transcript_data = transcript_json
+        
+        logger.info(f"Transcript loaded, sending to {provider} for analysis...")
+        
+        # Initialize LLM service with specified provider
+        llm = LLMService(provider=provider)
+        
+        # Analyze transcript
+        segments = llm.analyze_transcript(
+            transcript_data,
+            num_segments=num_segments,
+            max_duration=max_duration,
+            custom_instructions=custom_instructions
+        )
+        
+        logger.info(f"LLM returned {len(segments)} segments")
+        
+        # Prepare output JSON
+        job_id = str(uuid.uuid4())
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        output_data = {
+            'timestamp': datetime.now().isoformat(),
+            'job_id': job_id,
+            'source_transcript_url': transcript_url,
+            'llm_provider': llm.provider,
+            'llm_model': llm.model,
+            'num_segments': len(segments),
+            'max_duration': max_duration,
+            'custom_instructions': custom_instructions,
+            'segments': segments
+        }
+        
+        # Upload to S3
+        segments_url = None
+        if S3Service.is_s3_configured():
+            s3_service = S3Service()
+            
+            # Generate S3 key
+            segments_s3_key = f"segments/{job_id}/segments_{timestamp}.json"
+            
+            # Convert to JSON bytes
+            json_content = json.dumps(output_data, indent=2, ensure_ascii=False)
+            json_bytes = json_content.encode('utf-8')
+            
+            # Upload to S3
+            s3_service.upload_file_content(
+                json_bytes,
+                segments_s3_key,
+                content_type='application/json'
+            )
+            
+            # Get CloudFront URL
+            if s3_service.cloudfront_domain:
+                segments_url = f"https://{s3_service.cloudfront_domain}/{segments_s3_key}"
+            else:
+                segments_url = s3_service.get_public_url_from_key(segments_s3_key)
+            
+            logger.info(f"Segments uploaded to: {segments_url}")
+        else:
+            logger.warning("S3 not configured, segments not saved to cloud storage")
+        
+        # Calculate processing time
+        processing_time = round(time.time() - start_time, 2)
+        
+        logger.info(f"Segment analysis complete in {processing_time}s")
+        
+        return Response({
+            'success': True,
+            'job_id': job_id,
+            'segments_url': segments_url,
+            'segments': segments,
+            'provider': llm.provider,
+            'model': llm.model,
+            'processing_time': processing_time
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Segment analysis failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

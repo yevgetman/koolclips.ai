@@ -42,3 +42,9 @@ def test_stage1_upload(request):
 def test_stage2_transcription(request):
     """Test page for Stage 2: Audio transcription"""
     return render(request, 'test/stage2_transcription.html')
+
+
+@login_required
+def test_stage3_segments(request):
+    """Test page for Stage 3: Segment selection"""
+    return render(request, 'test/stage3_segments.html')

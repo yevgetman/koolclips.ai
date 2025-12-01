@@ -10,9 +10,25 @@ logger = logging.getLogger(__name__)
 class LLMService:
     """Service for analyzing transcripts using LLMs (OpenAI or Anthropic)"""
     
-    def __init__(self):
-        self.provider = settings.LLM_PROVIDER
-        self.model = settings.LLM_MODEL
+    def __init__(self, provider=None, model=None):
+        """
+        Initialize LLM Service
+        
+        Args:
+            provider: Optional override for LLM provider ('openai' or 'anthropic')
+            model: Optional override for model name
+        """
+        self.provider = provider or settings.LLM_PROVIDER
+        
+        # Set model based on provider if not specified
+        if model:
+            self.model = model
+        elif provider == 'openai':
+            self.model = 'gpt-4o'
+        elif provider == 'anthropic':
+            self.model = 'claude-3-opus-20240229'
+        else:
+            self.model = settings.LLM_MODEL
         
         if self.provider == 'openai':
             if not settings.OPENAI_API_KEY:
