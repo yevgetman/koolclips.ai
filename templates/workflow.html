@@ -1,0 +1,738 @@
+{% extends "base.html" %}
+
+{% block title %}Create Clips - Viral Clips{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-white mb-2">🎬 Create Viral Clips</h1>
+            <p class="text-gray-400">Upload your video and let AI identify the best moments</p>
+        </div>
+
+        <!-- Progress Steps -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <div id="step1-indicator" class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center text-white font-bold">1</div>
+                    <span class="ml-3 text-white font-medium">Upload</span>
+                </div>
+                <div class="flex-1 h-1 mx-4 bg-gray-700" id="step1-line"></div>
+                <div class="flex items-center">
+                    <div id="step2-indicator" class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 font-bold">2</div>
+                    <span class="ml-3 text-gray-400 font-medium" id="step2-label">Configure</span>
+                </div>
+                <div class="flex-1 h-1 mx-4 bg-gray-700" id="step2-line"></div>
+                <div class="flex items-center">
+                    <div id="step3-indicator" class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 font-bold">3</div>
+                    <span class="ml-3 text-gray-400 font-medium" id="step3-label">Process</span>
+                </div>
+                <div class="flex-1 h-1 mx-4 bg-gray-700" id="step3-line"></div>
+                <div class="flex items-center">
+                    <div id="step4-indicator" class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 font-bold">4</div>
+                    <span class="ml-3 text-gray-400 font-medium" id="step4-label">Results</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 1: Upload Section -->
+        <div id="upload-section" class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <h2 class="text-xl font-semibold text-white mb-6">Step 1: Upload Your Video</h2>
+            
+            <!-- Upload Zone -->
+            <div id="upload-zone" 
+                 class="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center hover:border-primary-500 transition-colors cursor-pointer"
+                 ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                <div class="space-y-4">
+                    <div class="mx-auto w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center">
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-lg text-gray-300">Drag and drop your video file here</p>
+                        <p class="text-sm text-gray-500 mt-1">or click to browse</p>
+                    </div>
+                    <input type="file" id="file-input" class="hidden" accept="video/*,audio/*" onchange="handleFileSelect(event)">
+                    <button onclick="document.getElementById('file-input').click()" 
+                            class="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-500 transition-colors">
+                        Select File
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2">Supports MP4, MOV, AVI, MKV, MP3, WAV (max 500MB)</p>
+                </div>
+            </div>
+
+            <!-- Selected File Info -->
+            <div id="selected-file-info" class="hidden mt-6 bg-gray-700 rounded-lg p-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-white font-medium" id="selected-file-name"></p>
+                            <p class="text-sm text-gray-400" id="selected-file-size"></p>
+                        </div>
+                    </div>
+                    <button onclick="clearSelectedFile()" class="text-gray-400 hover:text-red-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Upload Progress -->
+            <div id="upload-progress-section" class="hidden mt-6">
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <div class="flex justify-between mb-2">
+                        <span class="text-sm text-gray-300" id="upload-status">Uploading...</span>
+                        <span class="text-sm text-gray-400" id="upload-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-600 rounded-full h-2">
+                        <div id="upload-progress-bar" class="bg-primary-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Button -->
+            <div class="mt-6">
+                <button id="upload-btn" onclick="startUpload()" disabled
+                        class="w-full bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Upload & Extract Audio
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Configure Section (hidden initially) -->
+        <div id="configure-section" class="hidden bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <h2 class="text-xl font-semibold text-white mb-6">Step 2: Configure Processing Options</h2>
+            
+            <!-- Media Preview -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Uploaded Media</label>
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <video id="video-preview" controls class="hidden w-full rounded-lg max-h-64 bg-black"></video>
+                    <audio id="audio-preview" controls class="hidden w-full"></audio>
+                    <p class="text-sm text-gray-400 mt-2" id="media-info"></p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- LLM Provider -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">AI Provider</label>
+                    <select id="llm-provider" onchange="updateModelOptions()"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (GPT)</option>
+                    </select>
+                </div>
+
+                <!-- LLM Model -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Model</label>
+                    <select id="llm-model"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    </select>
+                </div>
+
+                <!-- Number of Segments -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Number of Clips</label>
+                    <input type="number" id="num-segments" value="3" min="1" max="10"
+                           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    <p class="text-xs text-gray-500 mt-1">How many clips to extract (1-10)</p>
+                </div>
+
+                <!-- Max Duration -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Max Clip Duration</label>
+                    <select id="max-duration"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        <option value="0">Let AI decide</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="180">3 minutes</option>
+                        <option value="240">4 minutes</option>
+                        <option value="300">5 minutes</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Custom Instructions -->
+            <div class="mt-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Custom Instructions (Optional)</label>
+                <textarea id="custom-instructions" rows="3" 
+                          placeholder="e.g., 'Find the most educational moments' or 'Focus on funny segments'"
+                          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"></textarea>
+                <p class="text-xs text-gray-500 mt-1">Default: Find the most viral/engaging moments</p>
+            </div>
+
+            <!-- Start Processing Button -->
+            <div class="mt-8">
+                <button id="process-btn" onclick="startProcessing()"
+                        class="w-full bg-green-600 text-white px-6 py-4 rounded-lg font-medium hover:bg-green-500 transition-colors text-lg">
+                    🚀 Start Processing
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Processing Section (hidden initially) -->
+        <div id="processing-section" class="hidden bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <h2 class="text-xl font-semibold text-white mb-6">Step 3: Processing Your Video</h2>
+            
+            <!-- Overall Progress -->
+            <div class="mb-8">
+                <div class="flex justify-between mb-2">
+                    <span class="text-white font-medium" id="processing-stage">Initializing...</span>
+                    <span class="text-gray-400" id="processing-percent">0%</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-3">
+                    <div id="processing-progress-bar" class="bg-gradient-to-r from-primary-600 to-green-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Stage Details -->
+            <div class="space-y-4">
+                <!-- Stage 2: Transcription -->
+                <div id="stage2-status" class="bg-gray-700 rounded-lg p-4 flex items-center space-x-4">
+                    <div id="stage2-icon" class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                        <span class="text-gray-400">2</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-white font-medium">Transcription</p>
+                        <p class="text-sm text-gray-400" id="stage2-detail">Waiting...</p>
+                    </div>
+                </div>
+
+                <!-- Stage 3: Segment Selection -->
+                <div id="stage3-status" class="bg-gray-700 rounded-lg p-4 flex items-center space-x-4">
+                    <div id="stage3-icon" class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                        <span class="text-gray-400">3</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-white font-medium">AI Analysis</p>
+                        <p class="text-sm text-gray-400" id="stage3-detail">Waiting...</p>
+                    </div>
+                </div>
+
+                <!-- Stage 4: Clip Creation -->
+                <div id="stage4-status" class="bg-gray-700 rounded-lg p-4 flex items-center space-x-4">
+                    <div id="stage4-icon" class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                        <span class="text-gray-400">4</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-white font-medium">Creating Clips</p>
+                        <p class="text-sm text-gray-400" id="stage4-detail">Waiting...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cancel Button -->
+            <div class="mt-6 text-center">
+                <p class="text-sm text-gray-500">This may take several minutes depending on video length</p>
+            </div>
+        </div>
+
+        <!-- Step 4: Results Section (hidden initially) -->
+        <div id="results-section" class="hidden bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <h2 class="text-xl font-semibold text-white mb-2">🎉 Your Clips Are Ready!</h2>
+            <p class="text-gray-400 mb-6">Click on any clip to preview or download</p>
+            
+            <!-- Clips Grid -->
+            <div id="clips-container" class="space-y-6">
+                <!-- Clips will be inserted here -->
+            </div>
+
+            <!-- Summary -->
+            <div class="mt-8 bg-gray-700 rounded-lg p-4">
+                <h3 class="text-white font-medium mb-2">Processing Summary</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                        <p class="text-gray-400">Total Clips</p>
+                        <p class="text-white font-medium" id="summary-clips">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-400">Processing Time</p>
+                        <p class="text-white font-medium" id="summary-time">0s</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-400">AI Provider</p>
+                        <p class="text-white font-medium" id="summary-provider">-</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-400">Model</p>
+                        <p class="text-white font-medium" id="summary-model">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Start Over Button -->
+            <div class="mt-6">
+                <button onclick="window.location.reload()" 
+                        class="w-full bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-500 transition-colors">
+                    Create More Clips
+                </button>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div id="error-section" class="hidden bg-gray-800 rounded-lg shadow-xl p-8 border border-red-700">
+            <div class="flex items-start space-x-4">
+                <div class="w-12 h-12 bg-red-900 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold text-red-400 mb-2">Processing Failed</h3>
+                    <p class="text-gray-300" id="error-message">An error occurred during processing.</p>
+                    <button onclick="window.location.reload()" 
+                            class="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-red-500 transition-colors">
+                        Try Again
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // State
+    let selectedFile = null;
+    let uploadedVideoUrl = null;
+    let uploadedAudioUrl = null;
+    let isAudioOnly = false;
+    let workflowId = null;
+    let processingStartTime = null;
+
+    // Model options
+    const anthropicModels = [
+        { group: 'Claude 4.5 (Latest)', options: [
+            { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5 (Recommended)' },
+            { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5 (Most Powerful)' },
+            { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Fastest)' }
+        ]},
+        { group: 'Claude 4', options: [
+            { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1' },
+            { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' }
+        ]},
+        { group: 'Claude 3.x', options: [
+            { value: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet' },
+            { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' }
+        ]}
+    ];
+
+    const openaiModels = [
+        { group: 'GPT-4o', options: [
+            { value: 'gpt-4o', label: 'GPT-4o (Recommended)' },
+            { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' }
+        ]},
+        { group: 'GPT-4', options: [
+            { value: 'gpt-4', label: 'GPT-4' },
+            { value: 'gpt-4-0125-preview', label: 'GPT-4 0125 Preview' }
+        ]},
+        { group: 'O-Series (Reasoning)', options: [
+            { value: 'o1', label: 'O1' },
+            { value: 'o3-mini', label: 'O3 Mini' }
+        ]}
+    ];
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        updateModelOptions();
+    });
+
+    // File handling
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.currentTarget.classList.add('border-primary-500', 'bg-gray-700');
+    }
+
+    function handleDragLeave(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('border-primary-500', 'bg-gray-700');
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('border-primary-500', 'bg-gray-700');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            selectFile(files[0]);
+        }
+    }
+
+    function handleFileSelect(e) {
+        if (e.target.files.length > 0) {
+            selectFile(e.target.files[0]);
+        }
+    }
+
+    function selectFile(file) {
+        const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/mp3'];
+        if (!validTypes.some(t => file.type.includes(t.split('/')[1]))) {
+            showToast('Please select a valid video or audio file', 'error');
+            return;
+        }
+
+        if (file.size > 500 * 1024 * 1024) {
+            showToast('File size must be under 500MB', 'error');
+            return;
+        }
+
+        selectedFile = file;
+        isAudioOnly = file.type.startsWith('audio/');
+        
+        document.getElementById('selected-file-name').textContent = file.name;
+        document.getElementById('selected-file-size').textContent = formatFileSize(file.size);
+        document.getElementById('selected-file-info').classList.remove('hidden');
+        document.getElementById('upload-btn').disabled = false;
+    }
+
+    function clearSelectedFile() {
+        selectedFile = null;
+        document.getElementById('selected-file-info').classList.add('hidden');
+        document.getElementById('upload-btn').disabled = true;
+        document.getElementById('file-input').value = '';
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // Upload
+    async function startUpload() {
+        if (!selectedFile) return;
+
+        document.getElementById('upload-btn').disabled = true;
+        document.getElementById('upload-progress-section').classList.remove('hidden');
+        
+        try {
+            // Step 1: Get presigned URL
+            updateUploadProgress(5, 'Getting upload URL...');
+            
+            const presignResponse = await fetch('/api/upload/presigned/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    filename: selectedFile.name,
+                    content_type: selectedFile.type,
+                    size: selectedFile.size
+                })
+            });
+
+            const presignData = await presignResponse.json();
+            if (!presignData.upload_url) {
+                throw new Error('Failed to get upload URL');
+            }
+
+            // Step 2: Upload file
+            updateUploadProgress(10, 'Uploading file...');
+            
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 60) + 10;
+                        updateUploadProgress(percent, 'Uploading file...');
+                    }
+                };
+                xhr.onload = () => xhr.status === 200 ? resolve() : reject(new Error('Upload failed'));
+                xhr.onerror = () => reject(new Error('Upload failed'));
+                xhr.open('PUT', presignData.upload_url);
+                xhr.setRequestHeader('Content-Type', selectedFile.type);
+                xhr.send(selectedFile);
+            });
+
+            // Step 3: Extract audio (if video)
+            if (!isAudioOnly) {
+                updateUploadProgress(75, 'Extracting audio...');
+                
+                const extractResponse = await fetch('/api/upload/extract-audio/', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        video_url: presignData.cloudfront_url || presignData.public_url,
+                        s3_key: presignData.s3_key
+                    })
+                });
+
+                const extractData = await extractResponse.json();
+                if (!extractData.success) {
+                    throw new Error(extractData.error || 'Audio extraction failed');
+                }
+
+                uploadedVideoUrl = presignData.cloudfront_url || presignData.public_url;
+                uploadedAudioUrl = extractData.audio_url;
+            } else {
+                uploadedVideoUrl = null;
+                uploadedAudioUrl = presignData.cloudfront_url || presignData.public_url;
+            }
+
+            updateUploadProgress(100, 'Upload complete!');
+            
+            // Show configure section
+            setTimeout(() => {
+                showConfigureSection();
+            }, 500);
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            showError(error.message);
+        }
+    }
+
+    function updateUploadProgress(percent, status) {
+        document.getElementById('upload-progress-bar').style.width = percent + '%';
+        document.getElementById('upload-percent').textContent = percent + '%';
+        document.getElementById('upload-status').textContent = status;
+    }
+
+    // Configure section
+    function showConfigureSection() {
+        // Update step indicators
+        document.getElementById('step1-indicator').classList.add('bg-green-600');
+        document.getElementById('step1-line').classList.add('bg-green-600');
+        document.getElementById('step2-indicator').classList.remove('bg-gray-700');
+        document.getElementById('step2-indicator').classList.add('bg-primary-600');
+        document.getElementById('step2-label').classList.remove('text-gray-400');
+        document.getElementById('step2-label').classList.add('text-white');
+
+        // Hide upload, show configure
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('configure-section').classList.remove('hidden');
+
+        // Set up media preview
+        if (uploadedVideoUrl) {
+            const video = document.getElementById('video-preview');
+            video.src = uploadedVideoUrl;
+            video.classList.remove('hidden');
+            document.getElementById('media-info').textContent = `Video: ${selectedFile.name}`;
+        } else {
+            const audio = document.getElementById('audio-preview');
+            audio.src = uploadedAudioUrl;
+            audio.classList.remove('hidden');
+            document.getElementById('media-info').textContent = `Audio: ${selectedFile.name}`;
+        }
+    }
+
+    function updateModelOptions() {
+        const provider = document.getElementById('llm-provider').value;
+        const models = provider === 'anthropic' ? anthropicModels : openaiModels;
+        const select = document.getElementById('llm-model');
+        
+        select.innerHTML = '';
+        models.forEach(group => {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = group.group;
+            group.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.label;
+                optgroup.appendChild(option);
+            });
+            select.appendChild(optgroup);
+        });
+    }
+
+    // Processing
+    async function startProcessing() {
+        processingStartTime = Date.now();
+        
+        // Update step indicators
+        document.getElementById('step2-indicator').classList.add('bg-green-600');
+        document.getElementById('step2-line').classList.add('bg-green-600');
+        document.getElementById('step3-indicator').classList.remove('bg-gray-700');
+        document.getElementById('step3-indicator').classList.add('bg-primary-600');
+        document.getElementById('step3-label').classList.remove('text-gray-400');
+        document.getElementById('step3-label').classList.add('text-white');
+
+        // Hide configure, show processing
+        document.getElementById('configure-section').classList.add('hidden');
+        document.getElementById('processing-section').classList.remove('hidden');
+
+        const options = {
+            video_url: uploadedVideoUrl,
+            audio_url: uploadedAudioUrl,
+            provider: document.getElementById('llm-provider').value,
+            model: document.getElementById('llm-model').value,
+            num_segments: parseInt(document.getElementById('num-segments').value) || 3,
+            max_duration: parseInt(document.getElementById('max-duration').value) || 300,
+            custom_instructions: document.getElementById('custom-instructions').value.trim() || null
+        };
+
+        try {
+            // Start the workflow
+            const response = await fetch('/api/process-workflow/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(options)
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to start processing');
+            }
+
+            workflowId = result.workflow_id;
+            
+            // Poll for status
+            pollWorkflowStatus();
+
+        } catch (error) {
+            console.error('Processing error:', error);
+            showError(error.message);
+        }
+    }
+
+    async function pollWorkflowStatus() {
+        try {
+            const response = await fetch(`/api/workflow-status/${workflowId}/`, {
+                headers: getAuthHeaders()
+            });
+
+            const result = await response.json();
+            
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to get status');
+            }
+
+            updateProcessingUI(result);
+
+            if (result.status === 'complete') {
+                showResults(result);
+            } else if (result.status === 'failed') {
+                throw new Error(result.error || 'Processing failed');
+            } else {
+                // Continue polling
+                setTimeout(pollWorkflowStatus, 3000);
+            }
+
+        } catch (error) {
+            console.error('Status poll error:', error);
+            showError(error.message);
+        }
+    }
+
+    function updateProcessingUI(status) {
+        const stageNames = {
+            2: 'Transcribing audio...',
+            3: 'AI analyzing transcript...',
+            4: 'Creating video clips...'
+        };
+
+        document.getElementById('processing-stage').textContent = stageNames[status.stage] || 'Processing...';
+        document.getElementById('processing-percent').textContent = status.progress + '%';
+        document.getElementById('processing-progress-bar').style.width = status.progress + '%';
+
+        // Update stage indicators
+        for (let i = 2; i <= 4; i++) {
+            const icon = document.getElementById(`stage${i}-icon`);
+            const detail = document.getElementById(`stage${i}-detail`);
+            
+            if (i < status.stage) {
+                icon.classList.remove('bg-gray-600', 'bg-primary-600');
+                icon.classList.add('bg-green-600');
+                icon.innerHTML = '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+                detail.textContent = 'Complete';
+            } else if (i === status.stage) {
+                icon.classList.remove('bg-gray-600');
+                icon.classList.add('bg-primary-600');
+                icon.innerHTML = `<span class="text-white">${i}</span>`;
+                detail.textContent = status.stage_detail || 'Processing...';
+            } else {
+                detail.textContent = 'Waiting...';
+            }
+        }
+    }
+
+    function showResults(result) {
+        // Update step indicators
+        document.getElementById('step3-indicator').classList.add('bg-green-600');
+        document.getElementById('step3-line').classList.add('bg-green-600');
+        document.getElementById('step4-indicator').classList.remove('bg-gray-700');
+        document.getElementById('step4-indicator').classList.add('bg-green-600');
+        document.getElementById('step4-label').classList.remove('text-gray-400');
+        document.getElementById('step4-label').classList.add('text-white');
+
+        // Hide processing, show results
+        document.getElementById('processing-section').classList.add('hidden');
+        document.getElementById('results-section').classList.remove('hidden');
+
+        // Populate clips
+        const container = document.getElementById('clips-container');
+        container.innerHTML = '';
+
+        result.clips.forEach((clip, index) => {
+            const clipEl = document.createElement('div');
+            clipEl.className = 'bg-gray-700 rounded-lg p-4';
+            clipEl.innerHTML = `
+                <div class="flex flex-col md:flex-row gap-4">
+                    <div class="md:w-1/2">
+                        <video controls class="w-full rounded-lg bg-black">
+                            <source src="${clip.url}" type="video/mp4">
+                        </video>
+                    </div>
+                    <div class="md:w-1/2">
+                        <h4 class="text-white font-medium mb-2">Clip ${index + 1}: ${clip.title}</h4>
+                        <p class="text-sm text-gray-400 mb-3">${clip.description || ''}</p>
+                        <div class="text-xs text-gray-500 space-y-1">
+                            <p>Duration: ${formatDuration(clip.duration)}</p>
+                            <p>Timestamps: ${formatTime(clip.start_time)} - ${formatTime(clip.end_time)}</p>
+                        </div>
+                        <a href="${clip.url}" download class="inline-block mt-3 bg-primary-600 text-white px-4 py-2 rounded text-sm hover:bg-primary-500 transition-colors">
+                            Download Clip
+                        </a>
+                    </div>
+                </div>
+            `;
+            container.appendChild(clipEl);
+        });
+
+        // Update summary
+        const processingTime = ((Date.now() - processingStartTime) / 1000).toFixed(0);
+        document.getElementById('summary-clips').textContent = result.clips.length;
+        document.getElementById('summary-time').textContent = formatDuration(processingTime);
+        document.getElementById('summary-provider').textContent = result.provider || '-';
+        document.getElementById('summary-model').textContent = result.model || '-';
+
+        showToast('Your clips are ready!', 'success');
+    }
+
+    function showError(message) {
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('configure-section').classList.add('hidden');
+        document.getElementById('processing-section').classList.add('hidden');
+        document.getElementById('results-section').classList.add('hidden');
+        document.getElementById('error-section').classList.remove('hidden');
+        document.getElementById('error-message').textContent = message;
+    }
+
+    function formatTime(seconds) {
+        if (!seconds) return '0:00';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function formatDuration(seconds) {
+        if (!seconds) return '0s';
+        seconds = parseInt(seconds);
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins > 0) {
+            return `${mins}m ${secs}s`;
+        }
+        return `${secs}s`;
+    }
+</script>
+{% endblock %}

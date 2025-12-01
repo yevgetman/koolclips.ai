@@ -1607,3 +1607,323 @@ def get_clip_status(request, render_id):
                 logger.info(f"Cleaned up temp clip: {temp_clip}")
             except Exception as e:
                 logger.warning(f"Failed to clean up temp clip: {e}")
+
+
+# In-memory workflow storage (for production, use Redis or database)
+_workflow_storage = {}
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def process_workflow(request):
+    """
+    Start the full clip creation workflow (Stages 2-4)
+    
+    POST /api/process-workflow/
+    Body: {
+        "video_url": "https://cloudfront.net/.../video.mp4",
+        "audio_url": "https://cloudfront.net/.../audio.mp3",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5-20250929",
+        "num_segments": 3,
+        "max_duration": 300,
+        "custom_instructions": null
+    }
+    """
+    import threading
+    
+    try:
+        video_url = request.data.get('video_url')
+        audio_url = request.data.get('audio_url')
+        provider = request.data.get('provider', 'anthropic')
+        model = request.data.get('model')
+        num_segments = request.data.get('num_segments', 3)
+        max_duration = request.data.get('max_duration', 300)
+        custom_instructions = request.data.get('custom_instructions')
+        
+        if not audio_url:
+            return Response({
+                'success': False,
+                'error': 'audio_url is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create workflow ID
+        workflow_id = str(uuid.uuid4())
+        
+        # Initialize workflow state
+        _workflow_storage[workflow_id] = {
+            'status': 'processing',
+            'stage': 2,
+            'stage_detail': 'Starting transcription...',
+            'progress': 5,
+            'video_url': video_url,
+            'audio_url': audio_url,
+            'provider': provider,
+            'model': model,
+            'num_segments': num_segments,
+            'max_duration': max_duration,
+            'custom_instructions': custom_instructions,
+            'transcript_url': None,
+            'segments_url': None,
+            'segments': [],
+            'clips': [],
+            'error': None
+        }
+        
+        # Start processing in background thread
+        thread = threading.Thread(
+            target=_run_workflow,
+            args=(workflow_id,)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return Response({
+            'success': True,
+            'workflow_id': workflow_id,
+            'status': 'processing'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Failed to start workflow: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _run_workflow(workflow_id):
+    """
+    Background function to run the full workflow
+    """
+    import time
+    import tempfile
+    import requests as http_requests
+    
+    workflow = _workflow_storage.get(workflow_id)
+    if not workflow:
+        return
+    
+    try:
+        # ============ STAGE 2: TRANSCRIPTION ============
+        workflow['stage'] = 2
+        workflow['stage_detail'] = 'Sending audio to ElevenLabs...'
+        workflow['progress'] = 10
+        
+        logger.info(f"Workflow {workflow_id}: Starting transcription")
+        
+        elevenlabs = ElevenLabsService()
+        transcript_result = elevenlabs.transcribe_audio_from_url(workflow['audio_url'])
+        
+        workflow['stage_detail'] = 'Saving transcript...'
+        workflow['progress'] = 25
+        
+        # Save transcript to S3
+        if S3Service.is_s3_configured():
+            s3_service = S3Service()
+            transcript_key = f"transcripts/{workflow_id}/transcript.json"
+            
+            fd, temp_transcript = tempfile.mkstemp(suffix='.json')
+            os.close(fd)
+            
+            with open(temp_transcript, 'w') as f:
+                json.dump(transcript_result, f, indent=2)
+            
+            s3_service.upload_file(temp_transcript, transcript_key)
+            os.remove(temp_transcript)
+            
+            if s3_service.cloudfront_domain:
+                workflow['transcript_url'] = f"https://{s3_service.cloudfront_domain}/{transcript_key}"
+            else:
+                workflow['transcript_url'] = s3_service.get_public_url_from_key(transcript_key)
+        
+        logger.info(f"Workflow {workflow_id}: Transcription complete")
+        
+        # ============ STAGE 3: SEGMENT SELECTION ============
+        workflow['stage'] = 3
+        workflow['stage_detail'] = f"Analyzing with {workflow['provider']}..."
+        workflow['progress'] = 35
+        
+        logger.info(f"Workflow {workflow_id}: Starting segment analysis")
+        
+        llm = LLMService(provider=workflow['provider'], model=workflow['model'])
+        segments = llm.analyze_transcript(
+            transcript_data=transcript_result,
+            num_segments=workflow['num_segments'],
+            max_duration=workflow['max_duration'] or 300,
+            custom_instructions=workflow['custom_instructions']
+        )
+        
+        workflow['segments'] = segments
+        workflow['stage_detail'] = 'Saving segments...'
+        workflow['progress'] = 50
+        
+        # Save segments to S3
+        if S3Service.is_s3_configured():
+            s3_service = S3Service()
+            segments_key = f"segments/{workflow_id}/segments.json"
+            
+            segments_data = {
+                'workflow_id': workflow_id,
+                'num_segments': len(segments),
+                'provider': workflow['provider'],
+                'model': llm.model,
+                'segments': segments
+            }
+            
+            fd, temp_segments = tempfile.mkstemp(suffix='.json')
+            os.close(fd)
+            
+            with open(temp_segments, 'w') as f:
+                json.dump(segments_data, f, indent=2)
+            
+            s3_service.upload_file(temp_segments, segments_key)
+            os.remove(temp_segments)
+            
+            if s3_service.cloudfront_domain:
+                workflow['segments_url'] = f"https://{s3_service.cloudfront_domain}/{segments_key}"
+            else:
+                workflow['segments_url'] = s3_service.get_public_url_from_key(segments_key)
+        
+        logger.info(f"Workflow {workflow_id}: Segment analysis complete, found {len(segments)} segments")
+        
+        # ============ STAGE 4: CLIP CREATION ============
+        workflow['stage'] = 4
+        workflow['stage_detail'] = f'Creating {len(segments)} clips...'
+        workflow['progress'] = 55
+        
+        # Use video URL if available, otherwise audio URL
+        media_url = workflow['video_url'] or workflow['audio_url']
+        is_audio_only = workflow['video_url'] is None
+        
+        logger.info(f"Workflow {workflow_id}: Starting clip creation for {len(segments)} segments")
+        
+        shotstack = ShotstackService()
+        clips = []
+        
+        for i, segment in enumerate(segments):
+            workflow['stage_detail'] = f'Creating clip {i + 1} of {len(segments)}...'
+            base_progress = 55 + (i / len(segments)) * 35
+            workflow['progress'] = int(base_progress)
+            
+            # Add 3 seconds padding to start and end
+            start_time = max(0, segment['start_time'] - 3)
+            end_time = segment['end_time'] + 3
+            
+            logger.info(f"Workflow {workflow_id}: Creating clip {i + 1}: {start_time}s - {end_time}s (with 3s padding)")
+            
+            try:
+                # Start render
+                render_id = shotstack.create_clip(
+                    media_url=media_url,
+                    start_time=start_time,
+                    end_time=end_time,
+                    is_audio_only=is_audio_only
+                )
+                
+                # Wait for render to complete
+                workflow['stage_detail'] = f'Rendering clip {i + 1} of {len(segments)}...'
+                render_status = shotstack.wait_for_render(render_id, max_wait=300, check_interval=5)
+                
+                shotstack_url = render_status['url']
+                clip_url = shotstack_url
+                
+                # Upload to S3
+                if S3Service.is_s3_configured():
+                    try:
+                        s3_service = S3Service()
+                        
+                        dl_response = http_requests.get(shotstack_url, stream=True)
+                        dl_response.raise_for_status()
+                        
+                        fd, temp_clip = tempfile.mkstemp(suffix='.mp4')
+                        os.close(fd)
+                        
+                        with open(temp_clip, 'wb') as f:
+                            for chunk in dl_response.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                        
+                        clip_s3_key = f"clips/{workflow_id}/clip_{i + 1}.mp4"
+                        s3_service.upload_file(temp_clip, clip_s3_key)
+                        os.remove(temp_clip)
+                        
+                        if s3_service.cloudfront_domain:
+                            clip_url = f"https://{s3_service.cloudfront_domain}/{clip_s3_key}"
+                        else:
+                            clip_url = s3_service.get_public_url_from_key(clip_s3_key)
+                        
+                        logger.info(f"Workflow {workflow_id}: Clip {i + 1} uploaded to S3: {clip_url}")
+                        
+                    except Exception as upload_err:
+                        logger.error(f"Failed to upload clip to S3: {str(upload_err)}")
+                        clip_url = shotstack_url
+                
+                clips.append({
+                    'title': segment.get('title', f'Clip {i + 1}'),
+                    'description': segment.get('description', ''),
+                    'url': clip_url,
+                    'start_time': segment['start_time'],
+                    'end_time': segment['end_time'],
+                    'duration': segment['end_time'] - segment['start_time'],
+                    'render_id': render_id
+                })
+                
+            except Exception as clip_err:
+                logger.error(f"Workflow {workflow_id}: Failed to create clip {i + 1}: {str(clip_err)}")
+                # Continue with remaining clips
+        
+        workflow['clips'] = clips
+        workflow['progress'] = 100
+        workflow['status'] = 'complete'
+        workflow['stage_detail'] = 'Complete!'
+        
+        logger.info(f"Workflow {workflow_id}: Complete! Created {len(clips)} clips")
+        
+    except Exception as e:
+        logger.error(f"Workflow {workflow_id} failed: {str(e)}")
+        workflow['status'] = 'failed'
+        workflow['error'] = str(e)
+
+
+@api_view(['GET'])
+def get_workflow_status(request, workflow_id):
+    """
+    Get the status of a workflow
+    
+    GET /api/workflow-status/<workflow_id>/
+    """
+    try:
+        workflow = _workflow_storage.get(workflow_id)
+        
+        if not workflow:
+            return Response({
+                'success': False,
+                'error': 'Workflow not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        response_data = {
+            'success': True,
+            'status': workflow['status'],
+            'stage': workflow['stage'],
+            'stage_detail': workflow['stage_detail'],
+            'progress': workflow['progress']
+        }
+        
+        if workflow['status'] == 'complete':
+            response_data['clips'] = workflow['clips']
+            response_data['transcript_url'] = workflow['transcript_url']
+            response_data['segments_url'] = workflow['segments_url']
+            response_data['provider'] = workflow['provider']
+            response_data['model'] = workflow['model']
+        
+        if workflow['status'] == 'failed':
+            response_data['error'] = workflow['error']
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Failed to get workflow status: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

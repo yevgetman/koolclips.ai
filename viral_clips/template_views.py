@@ -54,3 +54,9 @@ def test_stage3_segments(request):
 def test_stage4_clipping(request):
     """Test page for Stage 4: Video clipping with Shotstack"""
     return render(request, 'test/stage4_clipping.html')
+
+
+@login_required
+def workflow_page(request):
+    """Production workflow page - combines all stages"""
+    return render(request, 'workflow.html')
