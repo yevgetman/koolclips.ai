@@ -653,9 +653,9 @@
                 
                 updateStageUI(4, `Creating clip ${clipNum} of ${segments.length}...`, 55 + (i / segments.length) * 40);
 
-                // Add 3 seconds padding to start and end
-                const startTime = Math.max(0, segment.start_time - 3);
-                const endTime = segment.end_time + 3;
+                // Add 10 seconds padding to start and end
+                const startTime = Math.max(0, segment.start_time - 10);
+                const endTime = segment.end_time + 10;
 
                 // Start render (same as test page)
                 const createResponse = await fetch('/api/create-clip/', {
@@ -806,9 +806,9 @@
                             <p>Duration: ${formatDuration(clip.duration)}</p>
                             <p>Timestamps: ${formatTime(clip.start_time)} - ${formatTime(clip.end_time)}</p>
                         </div>
-                        <a href="${clip.url}" download class="inline-block mt-3 bg-primary-600 text-white px-4 py-2 rounded text-sm hover:bg-primary-500 transition-colors">
+                        <button onclick="downloadClip('${clip.url}', 'clip-${index + 1}.mp4')" class="inline-block mt-3 bg-primary-600 text-white px-4 py-2 rounded text-sm hover:bg-primary-500 transition-colors cursor-pointer">
                             Download Clip
-                        </a>
+                        </button>
                     </div>
                 </div>
             `;
@@ -823,6 +823,33 @@
         document.getElementById('summary-model').textContent = result.model || '-';
 
         showToast('Your clips are ready!', 'success');
+    }
+
+    async function downloadClip(url, filename) {
+        try {
+            showToast('Starting download...', 'info');
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Download failed');
+            
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            window.URL.revokeObjectURL(blobUrl);
+            showToast('Download started!', 'success');
+        } catch (error) {
+            console.error('Download error:', error);
+            // Fallback: open in new tab
+            window.open(url, '_blank');
+            showToast('Opening in new tab instead', 'info');
+        }
     }
 
     function showError(message) {
