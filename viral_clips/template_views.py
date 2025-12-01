@@ -48,3 +48,9 @@ def test_stage2_transcription(request):
 def test_stage3_segments(request):
     """Test page for Stage 3: Segment selection"""
     return render(request, 'test/stage3_segments.html')
+
+
+@login_required
+def test_stage4_clipping(request):
+    """Test page for Stage 4: Video clipping with Shotstack"""
+    return render(request, 'test/stage4_clipping.html')

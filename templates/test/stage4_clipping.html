@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+
+{% block title %}Test Stage 4: Clip Editing - Viral Clips{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">🧪 Stage 4 Test: Clip Editing</h1>
+            <p class="text-gray-400">Extract video clips using Shotstack API</p>
+            <div class="mt-4 bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+                <p class="text-blue-300 text-sm">
+                    <strong>Stage 4 Pipeline:</strong> Video URL + Segments JSON → Shotstack → Clipped Video → Save to S3
+                </p>
+                <p class="text-blue-200 text-xs mt-2">
+                    Note: This test page processes only the <strong>first segment</strong> from the segments JSON file.
+                </p>
+            </div>
+        </div>
+
+        <!-- Input Section -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <!-- Video URL Input -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Original Video URL (from Stage 1)
+                </label>
+                <input type="url" id="video-url" 
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                       placeholder="https://deoxbg69khcio.cloudfront.net/uploads/.../video.mp4">
+                <p class="mt-2 text-xs text-gray-500">
+                    Enter the public CloudFront URL to the original video file from Stage 1
+                </p>
+            </div>
+
+            <!-- Segments JSON URL Input -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Segments JSON URL (from Stage 3)
+                </label>
+                <input type="url" id="segments-url" 
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                       placeholder="https://deoxbg69khcio.cloudfront.net/segments/.../segments.json">
+                <p class="mt-2 text-xs text-gray-500">
+                    Enter the public CloudFront URL to the segments JSON file from Stage 3
+                </p>
+            </div>
+
+            <!-- Segment Preview (populated after loading segments) -->
+            <div id="segment-preview" class="hidden mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    First Segment to Process
+                </label>
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <h4 class="text-white font-medium" id="preview-title"></h4>
+                        <span class="text-xs text-blue-400 font-mono" id="preview-time"></span>
+                    </div>
+                    <p class="text-sm text-gray-400" id="preview-description"></p>
+                    <p class="text-xs text-gray-500 mt-2" id="preview-duration"></p>
+                </div>
+            </div>
+
+            <!-- Load Segments Button -->
+            <div class="mb-6">
+                <button id="load-segments-btn"
+                        class="w-full bg-gray-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Load Segments JSON
+                </button>
+            </div>
+
+            <!-- Create Clip Button -->
+            <div class="mb-6">
+                <button id="create-clip-btn" disabled
+                        class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Create Video Clip
+                </button>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progress-section" class="hidden mb-6">
+                <div class="bg-blue-900/20 border border-blue-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-blue-400 mt-0.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-blue-300 mb-2" id="progress-title">Processing...</h3>
+                            <p class="text-sm text-gray-300" id="progress-status">Initializing...</p>
+                            <div class="mt-3 w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                                <div id="progress-bar" class="bg-gradient-to-r from-blue-600 to-blue-400 h-2 rounded-full transition-all duration-500" style="width: 10%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <div id="result-section" class="hidden">
+                <div class="bg-blue-900/20 border border-blue-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-blue-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-blue-300 mb-2">Stage 4 Complete!</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Clipped Video URL:</p>
+                                    <a id="result-clip-url" href="#" target="_blank" 
+                                       class="text-sm text-blue-400 hover:text-blue-300 break-all underline font-mono bg-gray-700 px-3 py-2 rounded block">
+                                    </a>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Clip Details:</p>
+                                    <div class="text-sm text-gray-300 bg-gray-700 px-3 py-2 rounded space-y-1">
+                                        <p>Segment: <span id="result-segment-title" class="font-medium"></span></p>
+                                        <p>Duration: <span id="result-duration" class="font-medium"></span></p>
+                                        <p>Processing Time: <span id="result-processing-time" class="font-medium"></span></p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Video Preview -->
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Video Preview:</p>
+                                    <video id="video-preview" controls class="w-full rounded-lg bg-black max-h-96">
+                                        Your browser does not support the video tag.
+                                    </video>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Section -->
+            <div id="error-section" class="hidden">
+                <div class="bg-red-900/20 border border-red-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-red-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-red-300 mb-2">Clip Creation Failed</h3>
+                            <p class="text-sm text-gray-300" id="error-message"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="mt-6 flex justify-between">
+            <a href="{% url 'test-stage3' %}" class="text-green-400 hover:text-green-300 transition-colors">
+                ← Stage 3: Segments
+            </a>
+            <span class="text-gray-600">Pipeline Complete!</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // DOM elements
+    const videoUrlInput = document.getElementById('video-url');
+    const segmentsUrlInput = document.getElementById('segments-url');
+    const loadSegmentsBtn = document.getElementById('load-segments-btn');
+    const createClipBtn = document.getElementById('create-clip-btn');
+    const segmentPreview = document.getElementById('segment-preview');
+    const progressSection = document.getElementById('progress-section');
+    const resultSection = document.getElementById('result-section');
+    const errorSection = document.getElementById('error-section');
+
+    // State
+    let isProcessing = false;
+    let loadedSegment = null;
+
+    // Event listeners
+    loadSegmentsBtn.addEventListener('click', loadSegments);
+    createClipBtn.addEventListener('click', createClip);
+
+    function hideAllSections() {
+        progressSection.classList.add('hidden');
+        resultSection.classList.add('hidden');
+        errorSection.classList.add('hidden');
+    }
+
+    function updateProgress(percent, status) {
+        document.getElementById('progress-bar').style.width = `${percent}%`;
+        document.getElementById('progress-status').textContent = status;
+    }
+
+    async function loadSegments() {
+        const segmentsUrl = segmentsUrlInput.value.trim();
+        
+        if (!segmentsUrl) {
+            showError('Please enter a segments JSON URL');
+            return;
+        }
+
+        loadSegmentsBtn.disabled = true;
+        loadSegmentsBtn.textContent = 'Loading...';
+
+        try {
+            const response = await fetch(segmentsUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch segments: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const segments = data.segments || [];
+
+            if (segments.length === 0) {
+                throw new Error('No segments found in JSON file');
+            }
+
+            // Get first segment
+            loadedSegment = segments[0];
+            
+            // Show preview
+            document.getElementById('preview-title').textContent = loadedSegment.title;
+            document.getElementById('preview-time').textContent = 
+                `${formatTime(loadedSegment.start_time)} - ${formatTime(loadedSegment.end_time)}`;
+            document.getElementById('preview-description').textContent = 
+                loadedSegment.description || 'No description';
+            document.getElementById('preview-duration').textContent = 
+                `Duration: ${formatDuration(loadedSegment.duration || (loadedSegment.end_time - loadedSegment.start_time))}`;
+            
+            segmentPreview.classList.remove('hidden');
+            createClipBtn.disabled = false;
+            
+            showToast(`Loaded ${segments.length} segment(s). First segment ready for clipping.`, 'success');
+
+        } catch (error) {
+            console.error('Load segments error:', error);
+            showError(error.message);
+            loadedSegment = null;
+            segmentPreview.classList.add('hidden');
+            createClipBtn.disabled = true;
+        } finally {
+            loadSegmentsBtn.disabled = false;
+            loadSegmentsBtn.textContent = 'Load Segments JSON';
+        }
+    }
+
+    async function createClip() {
+        if (isProcessing || !loadedSegment) return;
+
+        const videoUrl = videoUrlInput.value.trim();
+        
+        if (!videoUrl) {
+            showError('Please enter the original video URL');
+            return;
+        }
+
+        if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+            showError('Please enter a valid URL starting with http:// or https://');
+            return;
+        }
+
+        // Reset UI
+        hideAllSections();
+        isProcessing = true;
+        createClipBtn.disabled = true;
+        loadSegmentsBtn.disabled = true;
+        
+        // Show progress
+        progressSection.classList.remove('hidden');
+        updateProgress(10, 'Sending to Shotstack...');
+
+        try {
+            const response = await fetch('/api/create-clip/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    video_url: videoUrl,
+                    start_time: loadedSegment.start_time,
+                    end_time: loadedSegment.end_time,
+                    segment_title: loadedSegment.title
+                })
+            });
+
+            // Poll for updates since this is a long-running process
+            updateProgress(30, 'Shotstack processing video...');
+            
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Clip creation failed');
+            }
+
+            updateProgress(100, 'Complete!');
+            
+            // Show result
+            showResult(result);
+
+        } catch (error) {
+            console.error('Create clip error:', error);
+            showError(error.message);
+        } finally {
+            isProcessing = false;
+            createClipBtn.disabled = false;
+            loadSegmentsBtn.disabled = false;
+        }
+    }
+
+    function showResult(data) {
+        hideAllSections();
+        
+        // Populate result fields
+        document.getElementById('result-clip-url').textContent = data.clip_url;
+        document.getElementById('result-clip-url').href = data.clip_url;
+        document.getElementById('result-segment-title').textContent = data.segment_title || loadedSegment.title;
+        document.getElementById('result-duration').textContent = formatDuration(data.duration);
+        document.getElementById('result-processing-time').textContent = `${data.processing_time} seconds`;
+        
+        // Set video preview
+        const videoPreview = document.getElementById('video-preview');
+        videoPreview.src = data.clip_url;
+        
+        resultSection.classList.remove('hidden');
+        showToast('Video clip created successfully!', 'success');
+    }
+
+    function showError(message) {
+        hideAllSections();
+        document.getElementById('error-message').textContent = message;
+        errorSection.classList.remove('hidden');
+        showToast(message, 'error');
+    }
+
+    function formatTime(seconds) {
+        if (!seconds) return '0:00';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function formatDuration(seconds) {
+        if (!seconds) return 'Unknown';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        if (mins > 0) {
+            return `${mins}m ${secs}s`;
+        }
+        return `${secs}s`;
+    }
+</script>
+{% endblock %}

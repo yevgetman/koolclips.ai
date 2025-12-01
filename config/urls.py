@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from viral_clips.template_views import register_page, login_page, profile_page, home_page, test_stage1_upload, test_stage2_transcription, test_stage3_segments
+from viral_clips.template_views import register_page, login_page, profile_page, home_page, test_stage1_upload, test_stage2_transcription, test_stage3_segments, test_stage4_clipping
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -32,6 +32,7 @@ urlpatterns = [
     path("test/stage1/", test_stage1_upload, name='test-stage1'),
     path("test/stage2/", test_stage2_transcription, name='test-stage2'),
     path("test/stage3/", test_stage3_segments, name='test-stage3'),
+    path("test/stage4/", test_stage4_clipping, name='test-stage4'),
 ]
 
 # Serve media files in development

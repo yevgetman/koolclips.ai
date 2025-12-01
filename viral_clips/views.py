@@ -20,6 +20,7 @@ from .services.s3_service import S3Service
 from .services.preprocessing_service import PreprocessingService
 from .services.elevenlabs_service import ElevenLabsService
 from .services.llm_service import LLMService
+from .services.shotstack_service import ShotstackService
 from .utils import detect_file_type
 
 logger = logging.getLogger(__name__)
@@ -1417,3 +1418,162 @@ def analyze_segments(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def create_clip(request):
+    """
+    Create a video clip using Shotstack API (Stage 4)
+    
+    Takes video URL and segment timestamps, sends to Shotstack for clipping,
+    waits for render completion, uploads result to S3, and returns the public URL.
+    
+    POST /api/create-clip/
+    Body: {
+        "video_url": "https://cloudfront.net/.../video.mp4",
+        "start_time": 120.5,
+        "end_time": 180.3,
+        "segment_title": "Optional segment title"
+    }
+    
+    Returns: {
+        "success": true,
+        "clip_url": "https://cloudfront.net/.../clip.mp4",
+        "duration": 59.8,
+        "processing_time": 45.2
+    }
+    """
+    import time
+    import tempfile
+    import requests as http_requests
+    
+    start_time = time.time()
+    temp_clip = None
+    
+    try:
+        # Get request data
+        video_url = request.data.get('video_url')
+        segment_start = request.data.get('start_time')
+        segment_end = request.data.get('end_time')
+        segment_title = request.data.get('segment_title', 'Untitled Segment')
+        
+        if not video_url:
+            return Response({
+                'success': False,
+                'error': 'video_url is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if segment_start is None or segment_end is None:
+            return Response({
+                'success': False,
+                'error': 'start_time and end_time are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Convert to float
+        segment_start = float(segment_start)
+        segment_end = float(segment_end)
+        duration = segment_end - segment_start
+        
+        if duration <= 0:
+            return Response({
+                'success': False,
+                'error': 'end_time must be greater than start_time'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Creating clip: {segment_start}s - {segment_end}s ({duration}s) from {video_url}")
+        
+        # Initialize Shotstack service
+        shotstack = ShotstackService()
+        
+        # Create clip - sends to Shotstack
+        logger.info("Sending to Shotstack for rendering...")
+        render_id = shotstack.create_clip(
+            media_url=video_url,
+            start_time=segment_start,
+            end_time=segment_end,
+            is_audio_only=False  # Assuming video for this test
+        )
+        
+        logger.info(f"Shotstack render initiated: {render_id}")
+        
+        # Wait for render to complete (this can take a while)
+        logger.info("Waiting for Shotstack render to complete...")
+        render_status = shotstack.wait_for_render(render_id, max_wait=300, check_interval=5)
+        
+        shotstack_url = render_status['url']
+        logger.info(f"Shotstack render complete: {shotstack_url}")
+        
+        # Upload to S3 if configured
+        clip_url = shotstack_url  # Default to Shotstack URL
+        
+        if S3Service.is_s3_configured():
+            try:
+                s3_service = S3Service()
+                
+                # Download from Shotstack to temp file
+                logger.info("Downloading clip from Shotstack...")
+                response = http_requests.get(shotstack_url, stream=True)
+                response.raise_for_status()
+                
+                fd, temp_clip = tempfile.mkstemp(suffix='.mp4')
+                os.close(fd)
+                
+                with open(temp_clip, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                logger.info(f"Downloaded clip to temp file: {temp_clip}")
+                
+                # Upload to S3
+                job_id = str(uuid.uuid4())
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                clip_s3_key = f"clips/{job_id}/clip_{timestamp}.mp4"
+                
+                s3_service.upload_file(temp_clip, clip_s3_key)
+                
+                # Get CloudFront URL
+                if s3_service.cloudfront_domain:
+                    clip_url = f"https://{s3_service.cloudfront_domain}/{clip_s3_key}"
+                else:
+                    clip_url = s3_service.get_public_url_from_key(clip_s3_key)
+                
+                logger.info(f"Clip uploaded to S3: {clip_url}")
+                
+            except Exception as upload_err:
+                logger.error(f"Failed to upload clip to S3: {str(upload_err)}")
+                # Fall back to Shotstack URL
+                clip_url = shotstack_url
+        
+        # Calculate processing time
+        processing_time = round(time.time() - start_time, 2)
+        
+        logger.info(f"Clip creation complete in {processing_time}s")
+        
+        return Response({
+            'success': True,
+            'clip_url': clip_url,
+            'shotstack_url': shotstack_url,
+            'render_id': render_id,
+            'segment_title': segment_title,
+            'start_time': segment_start,
+            'end_time': segment_end,
+            'duration': duration,
+            'processing_time': processing_time
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Clip creation failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    finally:
+        # Clean up temp file
+        if temp_clip and os.path.exists(temp_clip):
+            try:
+                os.remove(temp_clip)
+                logger.info(f"Cleaned up temp clip: {temp_clip}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp clip: {e}")
