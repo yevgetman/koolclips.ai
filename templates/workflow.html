@@ -59,7 +59,7 @@
                             class="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-500 transition-colors">
                         Select File
                     </button>
-                    <p class="text-xs text-gray-500 mt-2">Supports MP4, MOV, AVI, MKV, MP3, WAV (max 500MB)</p>
+                    <p class="text-xs text-gray-500 mt-2">Supports MP4, MOV, AVI, MKV, MP3, WAV (up to 5GB)</p>
                 </div>
             </div>
 
@@ -409,84 +409,193 @@
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    // Upload
+    // Upload state for multipart
+    let uploadState = {
+        uploadId: null,
+        s3Key: null,
+        jobId: null,
+        parts: [],
+        uploadedParts: 0,
+        totalParts: 0,
+        uploadedBytes: 0,
+        totalBytes: 0,
+        startTime: 0
+    };
+
+    function calculateOptimalPartSize(fileSize) {
+        const MB = 1024 * 1024;
+        const minPartSize = 5 * MB;
+        const maxParts = 10000;
+        
+        let partSize;
+        if (fileSize < 100 * MB) {
+            partSize = fileSize; // Single part for small files
+        } else if (fileSize < 500 * MB) {
+            partSize = 10 * MB;
+        } else if (fileSize < 1024 * MB) {
+            partSize = 20 * MB;
+        } else if (fileSize < 2 * 1024 * MB) {
+            partSize = 50 * MB;
+        } else {
+            partSize = 100 * MB;
+        }
+        
+        const numParts = Math.ceil(fileSize / partSize);
+        if (numParts > maxParts) {
+            partSize = Math.ceil(fileSize / maxParts);
+        }
+        
+        return Math.max(partSize, minPartSize);
+    }
+
+    function uploadWithProgress(url, blob, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    onProgress(Math.round((e.loaded / e.total) * 100));
+                }
+            });
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(xhr.getResponseHeader('ETag'));
+                } else {
+                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('Network error')));
+            xhr.open('PUT', url);
+            xhr.send(blob);
+        });
+    }
+
+    // Upload using multipart (same as test page)
     async function startUpload() {
         if (!selectedFile) return;
 
         document.getElementById('upload-btn').disabled = true;
         document.getElementById('upload-progress-section').classList.remove('hidden');
         
+        // Reset state
+        uploadState = {
+            uploadId: null,
+            s3Key: null,
+            jobId: null,
+            parts: [],
+            uploadedParts: 0,
+            totalParts: 0,
+            uploadedBytes: 0,
+            totalBytes: selectedFile.size,
+            startTime: Date.now()
+        };
+
+        const partSize = calculateOptimalPartSize(selectedFile.size);
+        const numParts = Math.ceil(selectedFile.size / partSize);
+        
         try {
-            // Step 1: Get presigned URL
-            updateUploadProgress(5, 'Getting upload URL...');
+            // Step 1: Initiate multipart upload
+            updateUploadProgress(2, 'Initiating upload...');
             
-            const presignResponse = await fetch('/api/upload/presigned-url/', {
+            const initResponse = await fetch('/api/upload/multipart/initiate/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
                     filename: selectedFile.name,
                     content_type: selectedFile.type,
-                    size: selectedFile.size
+                    file_size: selectedFile.size,
+                    part_size: partSize
                 })
             });
 
-            if (!presignResponse.ok) {
-                const errorData = await presignResponse.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Failed to get upload URL');
+            const initData = await initResponse.json();
+            if (!initData.success) {
+                throw new Error(initData.error || 'Failed to initiate upload');
             }
 
-            const presignData = await presignResponse.json();
-            if (!presignData.upload_url) {
-                throw new Error('Failed to get upload URL');
-            }
+            uploadState.uploadId = initData.upload_id;
+            uploadState.s3Key = initData.s3_key;
+            uploadState.jobId = initData.job_id;
+            uploadState.totalParts = initData.num_parts;
 
-            // Step 2: Upload file using presigned POST
-            updateUploadProgress(10, 'Uploading file...');
+            // Step 2: Upload all parts with concurrency
+            updateUploadProgress(5, `Uploading ${uploadState.totalParts} parts...`);
             
-            await new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.upload.onprogress = (e) => {
-                    if (e.lengthComputable) {
-                        const percent = Math.round((e.loaded / e.total) * 60) + 10;
-                        updateUploadProgress(percent, 'Uploading file...');
-                    }
-                };
-                xhr.onload = () => {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve();
-                    } else {
-                        reject(new Error(`Upload failed with status ${xhr.status}`));
-                    }
-                };
-                xhr.onerror = () => reject(new Error('Upload failed - network error'));
-                xhr.open('POST', presignData.upload_url);
-                
-                // Build FormData with presigned fields
-                const formData = new FormData();
-                
-                // Add all presigned fields first (order matters!)
-                if (presignData.upload_fields) {
-                    Object.entries(presignData.upload_fields).forEach(([key, value]) => {
-                        formData.append(key, value);
+            const concurrency = 6;
+            const partNumbers = Array.from({length: uploadState.totalParts}, (_, i) => i + 1);
+            let index = 0;
+
+            async function uploadNextPart() {
+                while (index < partNumbers.length) {
+                    const partNumber = partNumbers[index++];
+                    const start = (partNumber - 1) * partSize;
+                    const end = Math.min(start + partSize, selectedFile.size);
+                    const blob = selectedFile.slice(start, end);
+
+                    // Get presigned URL for this part
+                    const urlResponse = await fetch('/api/upload/multipart/urls/', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                            upload_id: uploadState.uploadId,
+                            s3_key: uploadState.s3Key,
+                            part_numbers: [partNumber]
+                        })
                     });
+
+                    const urlData = await urlResponse.json();
+                    if (!urlData.success || !urlData.urls?.length) {
+                        throw new Error(`Failed to get URL for part ${partNumber}`);
+                    }
+
+                    // Upload part
+                    const etag = await uploadWithProgress(urlData.urls[0].url, blob, (pct) => {
+                        // Update overall progress
+                        const partProgress = (uploadState.uploadedParts + pct/100) / uploadState.totalParts;
+                        const overall = 5 + Math.round(partProgress * 65);
+                        updateUploadProgress(overall, `Uploading part ${uploadState.uploadedParts + 1} of ${uploadState.totalParts}...`);
+                    });
+
+                    uploadState.parts.push({ PartNumber: partNumber, ETag: etag });
+                    uploadState.uploadedParts++;
+                    uploadState.uploadedBytes += blob.size;
                 }
-                
-                // Add file last (must be after all other fields)
-                formData.append('file', selectedFile);
-                
-                xhr.send(formData);
+            }
+
+            // Run concurrent uploads
+            await Promise.all(Array(Math.min(concurrency, uploadState.totalParts)).fill().map(() => uploadNextPart()));
+
+            // Step 3: Complete multipart upload
+            updateUploadProgress(72, 'Finalizing upload...');
+            
+            const sortedParts = uploadState.parts.sort((a, b) => a.PartNumber - b.PartNumber);
+            
+            const completeResponse = await fetch('/api/upload/multipart/complete/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    upload_id: uploadState.uploadId,
+                    s3_key: uploadState.s3Key,
+                    parts: sortedParts
+                })
             });
 
-            // Step 3: Extract audio (if video)
+            const completeData = await completeResponse.json();
+            if (!completeData.success) {
+                throw new Error(completeData.error || 'Failed to complete upload');
+            }
+
+            const publicUrl = completeData.cloudfront_url || completeData.public_url;
+
+            // Step 4: Extract audio (if video)
             if (!isAudioOnly) {
-                updateUploadProgress(75, 'Extracting audio...');
+                updateUploadProgress(80, 'Extracting audio...');
                 
                 const extractResponse = await fetch('/api/upload/extract-audio/', {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
-                        video_url: presignData.cloudfront_url || presignData.public_url,
-                        s3_key: presignData.s3_key
+                        video_url: publicUrl,
+                        s3_key: uploadState.s3Key
                     })
                 });
 
@@ -495,11 +604,11 @@
                     throw new Error(extractData.error || 'Audio extraction failed');
                 }
 
-                uploadedVideoUrl = presignData.cloudfront_url || presignData.public_url;
+                uploadedVideoUrl = publicUrl;
                 uploadedAudioUrl = extractData.extracted_audio_url;
             } else {
                 uploadedVideoUrl = null;
-                uploadedAudioUrl = presignData.cloudfront_url || presignData.public_url;
+                uploadedAudioUrl = publicUrl;
             }
 
             updateUploadProgress(100, 'Upload complete!');
