@@ -568,7 +568,7 @@
         });
     }
 
-    // Processing
+    // Processing - calls same APIs as test pages directly
     async function startProcessing() {
         processingStartTime = Date.now();
         
@@ -585,8 +585,6 @@
         document.getElementById('processing-section').classList.remove('hidden');
 
         const options = {
-            video_url: uploadedVideoUrl,
-            audio_url: uploadedAudioUrl,
             provider: document.getElementById('llm-provider').value,
             model: document.getElementById('llm-model').value,
             num_segments: parseInt(document.getElementById('num-segments').value) || 3,
@@ -595,22 +593,114 @@
         };
 
         try {
-            // Start the workflow
-            const response = await fetch('/api/process-workflow/', {
+            // ============ STAGE 2: TRANSCRIPTION ============
+            // Same as test page - call /api/transcribe/
+            updateStageUI(2, 'Sending audio to ElevenLabs...', 10);
+            
+            const transcribeResponse = await fetch('/api/transcribe/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
-                body: JSON.stringify(options)
+                body: JSON.stringify({
+                    audio_url: uploadedAudioUrl
+                })
             });
 
-            const result = await response.json();
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to start processing');
+            const transcribeResult = await transcribeResponse.json();
+            if (!transcribeResult.success) {
+                throw new Error(transcribeResult.error || 'Transcription failed');
             }
 
-            workflowId = result.workflow_id;
-            
-            // Poll for status
-            pollWorkflowStatus();
+            const transcriptUrl = transcribeResult.transcript_url;
+            updateStageUI(2, 'Transcription complete!', 30);
+            markStageComplete(2);
+
+            // ============ STAGE 3: SEGMENT SELECTION ============
+            // Same as test page - call /api/analyze-segments/
+            updateStageUI(3, `Analyzing with ${options.provider}...`, 35);
+
+            const analyzeResponse = await fetch('/api/analyze-segments/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    transcript_url: transcriptUrl,
+                    provider: options.provider,
+                    model: options.model,
+                    num_segments: options.num_segments,
+                    max_duration: options.max_duration,
+                    custom_instructions: options.custom_instructions
+                })
+            });
+
+            const analyzeResult = await analyzeResponse.json();
+            if (!analyzeResult.success) {
+                throw new Error(analyzeResult.error || 'Segment analysis failed');
+            }
+
+            const segments = analyzeResult.segments;
+            updateStageUI(3, `Found ${segments.length} segments!`, 50);
+            markStageComplete(3);
+
+            // ============ STAGE 4: CLIP CREATION ============
+            // Same as test page - call /api/create-clip/ for each segment
+            updateStageUI(4, `Creating ${segments.length} clips...`, 55);
+
+            const clips = [];
+            const mediaUrl = uploadedVideoUrl || uploadedAudioUrl;
+
+            for (let i = 0; i < segments.length; i++) {
+                const segment = segments[i];
+                const clipNum = i + 1;
+                
+                updateStageUI(4, `Creating clip ${clipNum} of ${segments.length}...`, 55 + (i / segments.length) * 40);
+
+                // Add 3 seconds padding to start and end
+                const startTime = Math.max(0, segment.start_time - 3);
+                const endTime = segment.end_time + 3;
+
+                // Start render (same as test page)
+                const createResponse = await fetch('/api/create-clip/', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        video_url: mediaUrl,
+                        start_time: startTime,
+                        end_time: endTime
+                    })
+                });
+
+                const createResult = await createResponse.json();
+                if (!createResult.success) {
+                    console.error(`Failed to create clip ${clipNum}:`, createResult.error);
+                    continue; // Skip failed clip, continue with others
+                }
+
+                const renderId = createResult.render_id;
+                updateStageUI(4, `Rendering clip ${clipNum} of ${segments.length}...`, 55 + ((i + 0.5) / segments.length) * 40);
+
+                // Poll for render completion (same as test page)
+                const clipUrl = await pollClipStatus(renderId, clipNum, segments.length);
+                
+                if (clipUrl) {
+                    clips.push({
+                        title: segment.title || `Clip ${clipNum}`,
+                        description: segment.description || '',
+                        url: clipUrl,
+                        start_time: segment.start_time,
+                        end_time: segment.end_time,
+                        duration: segment.end_time - segment.start_time
+                    });
+                }
+            }
+
+            updateStageUI(4, 'All clips complete!', 100);
+            markStageComplete(4);
+
+            // Show results
+            showResults({
+                clips: clips,
+                provider: options.provider,
+                model: options.model
+            });
 
         } catch (error) {
             console.error('Processing error:', error);
@@ -618,65 +708,68 @@
         }
     }
 
-    async function pollWorkflowStatus() {
-        try {
-            const response = await fetch(`/api/workflow-status/${workflowId}/`, {
-                headers: getAuthHeaders()
-            });
+    // Poll clip status - same as test page
+    async function pollClipStatus(renderId, clipNum, totalClips) {
+        const maxAttempts = 60; // 5 minutes max
+        let attempts = 0;
 
-            const result = await response.json();
-            
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to get status');
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(`/api/clip-status/${renderId}/`, {
+                    headers: getAuthHeaders()
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'done' && result.clip_url) {
+                    return result.clip_url;
+                } else if (result.status === 'failed') {
+                    console.error(`Clip ${clipNum} render failed:`, result.error);
+                    return null;
+                }
+
+                // Update progress
+                if (result.progress) {
+                    updateStageUI(4, `Rendering clip ${clipNum} of ${totalClips}... ${result.progress}%`, null);
+                }
+
+                // Wait 5 seconds before next poll
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                attempts++;
+
+            } catch (error) {
+                console.error(`Error polling clip ${clipNum} status:`, error);
+                attempts++;
             }
+        }
 
-            updateProcessingUI(result);
+        console.error(`Clip ${clipNum} timed out`);
+        return null;
+    }
 
-            if (result.status === 'complete') {
-                showResults(result);
-            } else if (result.status === 'failed') {
-                throw new Error(result.error || 'Processing failed');
-            } else {
-                // Continue polling
-                setTimeout(pollWorkflowStatus, 3000);
-            }
-
-        } catch (error) {
-            console.error('Status poll error:', error);
-            showError(error.message);
+    function updateStageUI(stage, detail, progress) {
+        document.getElementById('processing-stage').textContent = detail;
+        if (progress !== null) {
+            document.getElementById('processing-percent').textContent = Math.round(progress) + '%';
+            document.getElementById('processing-progress-bar').style.width = progress + '%';
+        }
+        document.getElementById(`stage${stage}-detail`).textContent = detail;
+        
+        // Highlight current stage
+        const icon = document.getElementById(`stage${stage}-icon`);
+        if (!icon.classList.contains('bg-green-600')) {
+            icon.classList.remove('bg-gray-600');
+            icon.classList.add('bg-primary-600');
+            icon.innerHTML = `<span class="text-white">${stage}</span>`;
         }
     }
 
-    function updateProcessingUI(status) {
-        const stageNames = {
-            2: 'Transcribing audio...',
-            3: 'AI analyzing transcript...',
-            4: 'Creating video clips...'
-        };
-
-        document.getElementById('processing-stage').textContent = stageNames[status.stage] || 'Processing...';
-        document.getElementById('processing-percent').textContent = status.progress + '%';
-        document.getElementById('processing-progress-bar').style.width = status.progress + '%';
-
-        // Update stage indicators
-        for (let i = 2; i <= 4; i++) {
-            const icon = document.getElementById(`stage${i}-icon`);
-            const detail = document.getElementById(`stage${i}-detail`);
-            
-            if (i < status.stage) {
-                icon.classList.remove('bg-gray-600', 'bg-primary-600');
-                icon.classList.add('bg-green-600');
-                icon.innerHTML = '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
-                detail.textContent = 'Complete';
-            } else if (i === status.stage) {
-                icon.classList.remove('bg-gray-600');
-                icon.classList.add('bg-primary-600');
-                icon.innerHTML = `<span class="text-white">${i}</span>`;
-                detail.textContent = status.stage_detail || 'Processing...';
-            } else {
-                detail.textContent = 'Waiting...';
-            }
-        }
+    function markStageComplete(stage) {
+        const icon = document.getElementById(`stage${stage}-icon`);
+        icon.classList.remove('bg-gray-600', 'bg-primary-600');
+        icon.classList.add('bg-green-600');
+        icon.innerHTML = '<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+        document.getElementById(`stage${stage}-detail`).textContent = 'Complete';
     }
 
     function showResults(result) {
