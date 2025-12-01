@@ -496,7 +496,7 @@
                 }
 
                 uploadedVideoUrl = presignData.cloudfront_url || presignData.public_url;
-                uploadedAudioUrl = extractData.audio_url;
+                uploadedAudioUrl = extractData.extracted_audio_url;
             } else {
                 uploadedVideoUrl = null;
                 uploadedAudioUrl = presignData.cloudfront_url || presignData.public_url;
