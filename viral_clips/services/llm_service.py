@@ -183,8 +183,51 @@ Remember: Return ONLY the JSON array, no additional text or explanation."""
             list: List of segment dictionaries
         """
         try:
+            # Clean up response - remove markdown code blocks if present
+            cleaned_text = response_text.strip()
+            
+            # Remove markdown code block wrappers (```json ... ``` or ``` ... ```)
+            if cleaned_text.startswith('```'):
+                # Find the end of the first line (might be ```json or just ```)
+                first_newline = cleaned_text.find('\n')
+                if first_newline != -1:
+                    cleaned_text = cleaned_text[first_newline + 1:]
+                # Remove trailing ```
+                if cleaned_text.endswith('```'):
+                    cleaned_text = cleaned_text[:-3].strip()
+            
+            # Try to find JSON array or object if still not valid
+            if not cleaned_text.startswith('[') and not cleaned_text.startswith('{'):
+                # Look for first [ or {
+                bracket_idx = cleaned_text.find('[')
+                brace_idx = cleaned_text.find('{')
+                
+                if bracket_idx == -1 and brace_idx == -1:
+                    raise ValueError("No JSON found in response")
+                
+                # Use whichever comes first
+                if bracket_idx == -1:
+                    start_idx = brace_idx
+                elif brace_idx == -1:
+                    start_idx = bracket_idx
+                else:
+                    start_idx = min(bracket_idx, brace_idx)
+                
+                cleaned_text = cleaned_text[start_idx:]
+                
+                # Find the matching closing bracket/brace
+                if cleaned_text.startswith('['):
+                    end_idx = cleaned_text.rfind(']') + 1
+                else:
+                    end_idx = cleaned_text.rfind('}') + 1
+                
+                if end_idx > 0:
+                    cleaned_text = cleaned_text[:end_idx]
+            
+            logger.debug(f"Cleaned response text: {cleaned_text[:500]}...")
+            
             # Try to parse as JSON
-            data = json.loads(response_text)
+            data = json.loads(cleaned_text)
             
             # Handle different response formats
             if isinstance(data, list):
@@ -228,8 +271,9 @@ Remember: Return ONLY the JSON array, no additional text or explanation."""
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response as JSON: {e}")
-            logger.error(f"Response text: {response_text}")
-            raise Exception("LLM did not return valid JSON")
+            logger.error(f"Raw response text (first 1000 chars): {response_text[:1000]}")
+            logger.error(f"Cleaned text (first 1000 chars): {cleaned_text[:1000] if 'cleaned_text' in locals() else 'N/A'}")
+            raise Exception(f"LLM did not return valid JSON: {str(e)}")
         except Exception as e:
             logger.error(f"Error parsing segments: {e}")
             raise
