@@ -18,6 +18,7 @@ from .serializers import (
 )
 from .services.s3_service import S3Service
 from .services.preprocessing_service import PreprocessingService
+from .services.elevenlabs_service import ElevenLabsService
 from .utils import detect_file_type
 
 logger = logging.getLogger(__name__)
@@ -1077,6 +1078,175 @@ def extract_audio_from_video(request):
             except Exception as e:
                 logger.warning(f"Failed to clean up temp video: {e}")
         
+        if temp_audio and os.path.exists(temp_audio):
+            try:
+                os.remove(temp_audio)
+                logger.info(f"Cleaned up temp audio: {temp_audio}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp audio: {e}")
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def transcribe_audio(request):
+    """
+    Transcribe an audio file using ElevenLabs API (Stage 2)
+    
+    Downloads audio from a URL, transcribes it using ElevenLabs,
+    uploads the transcript JSON to S3, and returns the public URL.
+    
+    POST /api/transcribe/
+    Body: {
+        "audio_url": "https://cloudfront.net/.../audio.mp3",
+        "job_id": "uuid"  # Optional
+    }
+    
+    Returns: {
+        "success": true,
+        "job_id": "uuid",
+        "audio_url": "https://...",
+        "transcript_url": "https://cloudfront.net/.../transcript.json",
+        "transcript_text": "Full transcript text...",
+        "duration": 120.5,
+        "language": "en",
+        "word_count": 500,
+        "processing_time": 15.3
+    }
+    """
+    import time
+    import tempfile
+    import requests
+    
+    start_time = time.time()
+    temp_audio = None
+    
+    try:
+        # Get request data
+        audio_url = request.data.get('audio_url')
+        job_id = request.data.get('job_id') or str(uuid.uuid4())
+        
+        if not audio_url:
+            return Response({
+                'success': False,
+                'error': 'audio_url is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate URL format
+        if not audio_url.startswith(('http://', 'https://')):
+            return Response({
+                'success': False,
+                'error': 'Invalid URL format. Must start with http:// or https://'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Starting transcription for job {job_id}: {audio_url}")
+        
+        # Download audio file from URL
+        logger.info(f"Downloading audio from: {audio_url}")
+        try:
+            response = requests.get(audio_url, stream=True, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return Response({
+                'success': False,
+                'error': f'Failed to download audio file: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Determine file extension from URL or content type
+        content_type = response.headers.get('Content-Type', '')
+        if 'audio/mpeg' in content_type or audio_url.endswith('.mp3'):
+            ext = '.mp3'
+        elif 'audio/wav' in content_type or audio_url.endswith('.wav'):
+            ext = '.wav'
+        elif 'audio/mp4' in content_type or audio_url.endswith('.m4a'):
+            ext = '.m4a'
+        else:
+            ext = '.mp3'  # Default to mp3
+        
+        # Save to temp file
+        fd, temp_audio = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        
+        with open(temp_audio, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        logger.info(f"Audio downloaded to: {temp_audio}")
+        
+        # Transcribe using ElevenLabs
+        logger.info(f"Sending to ElevenLabs for transcription...")
+        elevenlabs = ElevenLabsService()
+        transcript_data = elevenlabs.transcribe_video(temp_audio)
+        
+        logger.info(f"Transcription complete, uploading to S3...")
+        
+        # Prepare transcript JSON
+        transcript_json = {
+            'job_id': job_id,
+            'audio_url': audio_url,
+            'transcript': transcript_data,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Upload transcript to S3
+        if S3Service.is_s3_configured():
+            s3_service = S3Service()
+            
+            # Generate S3 key for transcript
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            transcript_s3_key = f"transcripts/{job_id}/transcript_{timestamp}.json"
+            
+            # Convert to JSON bytes
+            json_content = json.dumps(transcript_json, indent=2, ensure_ascii=False)
+            json_bytes = json_content.encode('utf-8')
+            
+            # Upload to S3
+            transcript_url = s3_service.upload_file_content(
+                json_bytes,
+                transcript_s3_key,
+                content_type='application/json'
+            )
+            
+            # Get CloudFront URL
+            if s3_service.cloudfront_domain:
+                transcript_url = f"https://{s3_service.cloudfront_domain}/{transcript_s3_key}"
+            
+            logger.info(f"Transcript uploaded to: {transcript_url}")
+        else:
+            transcript_url = None
+            logger.warning("S3 not configured, transcript not saved to cloud storage")
+        
+        # Calculate processing time
+        processing_time = round(time.time() - start_time, 2)
+        
+        # Extract metadata
+        full_text = transcript_data.get('full_text', '')
+        word_count = len(transcript_data.get('words', []))
+        duration = transcript_data.get('metadata', {}).get('duration', 0)
+        language = transcript_data.get('metadata', {}).get('language', 'unknown')
+        
+        logger.info(f"Transcription complete for job {job_id} in {processing_time}s")
+        
+        return Response({
+            'success': True,
+            'job_id': job_id,
+            'audio_url': audio_url,
+            'transcript_url': transcript_url,
+            'transcript_text': full_text,
+            'duration': duration,
+            'language': language,
+            'word_count': word_count,
+            'processing_time': processing_time
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Transcription failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    finally:
+        # Clean up temp file
         if temp_audio and os.path.exists(temp_audio):
             try:
                 os.remove(temp_audio)

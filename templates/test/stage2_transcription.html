@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block title %}Test Stage 2: Audio Transcription - Viral Clips{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">🧪 Stage 2 Test: Audio Transcription</h1>
+            <p class="text-gray-400">Transcribe audio files using ElevenLabs API and save results to S3</p>
+            <div class="mt-4 bg-purple-900/20 border border-purple-700/50 rounded-lg p-4">
+                <p class="text-purple-300 text-sm">
+                    <strong>Stage 2 Pipeline:</strong> Audio URL → ElevenLabs Transcription → JSON with Timestamps → Save to S3
+                </p>
+            </div>
+        </div>
+
+        <!-- Input Section -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+            <!-- Audio URL Input -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Audio File URL (CloudFront/S3)
+                </label>
+                <input type="url" id="audio-url" 
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                       placeholder="https://deoxbg69khcio.cloudfront.net/uploads/.../audio.mp3">
+                <p class="mt-2 text-xs text-gray-500">
+                    Enter the public URL to an audio file (MP3, WAV, M4A, etc.)
+                </p>
+            </div>
+
+            <!-- Optional Job ID -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">
+                    Job ID <span class="text-gray-500">(optional)</span>
+                </label>
+                <input type="text" id="job-id" 
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                       placeholder="Leave blank to auto-generate">
+                <p class="mt-2 text-xs text-gray-500">
+                    Used to organize the transcript file in S3
+                </p>
+            </div>
+
+            <!-- Transcribe Button -->
+            <div class="mb-6">
+                <button id="transcribe-btn"
+                        class="w-full bg-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    Start Transcription
+                </button>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progress-section" class="hidden mb-6">
+                <div class="bg-purple-900/20 border border-purple-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-purple-400 mt-0.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="progress-spinner">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-purple-300 mb-2" id="progress-title">Processing...</h3>
+                            <p class="text-sm text-gray-300" id="progress-status">Initializing transcription...</p>
+                            <div class="mt-3 w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                                <div id="progress-bar" class="bg-gradient-to-r from-purple-600 to-purple-400 h-2 rounded-full transition-all duration-500" style="width: 10%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <div id="result-section" class="hidden">
+                <div class="bg-green-900/20 border border-green-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-green-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-green-300 mb-2">Stage 2 Complete!</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Job ID:</p>
+                                    <p class="text-sm text-white font-mono bg-gray-700 px-3 py-2 rounded" id="result-job-id"></p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Source Audio URL:</p>
+                                    <a id="result-audio-url" href="#" target="_blank" 
+                                       class="text-sm text-primary-400 hover:text-primary-300 break-all underline font-mono bg-gray-700 px-3 py-2 rounded block">
+                                    </a>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Transcript JSON URL:</p>
+                                    <a id="result-transcript-url" href="#" target="_blank" 
+                                       class="text-sm text-green-400 hover:text-green-300 break-all underline font-mono bg-gray-700 px-3 py-2 rounded block">
+                                    </a>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Transcription Details:</p>
+                                    <div class="text-sm text-gray-300 bg-gray-700 px-3 py-2 rounded space-y-1">
+                                        <p>Duration: <span id="result-duration" class="font-medium"></span></p>
+                                        <p>Language: <span id="result-language" class="font-medium"></span></p>
+                                        <p>Word Count: <span id="result-word-count" class="font-medium"></span></p>
+                                        <p>Processing Time: <span id="result-processing-time" class="font-medium"></span></p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Transcript Preview -->
+                                <div>
+                                    <p class="text-xs text-gray-400 mb-1">Transcript Preview:</p>
+                                    <div class="bg-gray-700 rounded-lg p-3 max-h-48 overflow-y-auto">
+                                        <p class="text-sm text-gray-300 whitespace-pre-wrap" id="result-transcript-preview"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Section -->
+            <div id="error-section" class="hidden">
+                <div class="bg-red-900/20 border border-red-700/50 rounded-lg p-6">
+                    <div class="flex items-start space-x-3">
+                        <svg class="h-6 w-6 text-red-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-lg font-medium text-red-300 mb-2">Transcription Failed</h3>
+                            <p class="text-sm text-gray-300" id="error-message"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="mt-6 flex justify-between">
+            <a href="{% url 'test-stage1' %}" class="text-gray-400 hover:text-white transition-colors">
+                ← Stage 1: Upload
+            </a>
+            <span class="text-gray-600">Stage 3: Analysis (Coming Soon) →</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // DOM elements
+    const audioUrlInput = document.getElementById('audio-url');
+    const jobIdInput = document.getElementById('job-id');
+    const transcribeBtn = document.getElementById('transcribe-btn');
+    const progressSection = document.getElementById('progress-section');
+    const resultSection = document.getElementById('result-section');
+    const errorSection = document.getElementById('error-section');
+
+    // State
+    let isProcessing = false;
+
+    // Event listeners
+    transcribeBtn.addEventListener('click', startTranscription);
+    
+    // Allow Enter key to trigger transcription
+    audioUrlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') startTranscription();
+    });
+
+    function hideAllSections() {
+        progressSection.classList.add('hidden');
+        resultSection.classList.add('hidden');
+        errorSection.classList.add('hidden');
+    }
+
+    function updateProgress(percent, status) {
+        document.getElementById('progress-bar').style.width = `${percent}%`;
+        document.getElementById('progress-status').textContent = status;
+    }
+
+    async function startTranscription() {
+        if (isProcessing) return;
+
+        const audioUrl = audioUrlInput.value.trim();
+        const jobId = jobIdInput.value.trim() || null;
+
+        // Validate URL
+        if (!audioUrl) {
+            showError('Please enter an audio file URL');
+            return;
+        }
+
+        if (!audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
+            showError('Please enter a valid URL starting with http:// or https://');
+            return;
+        }
+
+        // Reset UI
+        hideAllSections();
+        isProcessing = true;
+        transcribeBtn.disabled = true;
+        
+        // Show progress
+        progressSection.classList.remove('hidden');
+        updateProgress(10, 'Downloading audio file...');
+
+        try {
+            // Call transcription API
+            updateProgress(30, 'Sending to ElevenLabs for transcription...');
+            
+            const response = await fetch('/api/transcribe/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    audio_url: audioUrl,
+                    job_id: jobId
+                })
+            });
+
+            updateProgress(70, 'Processing transcription results...');
+            
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Transcription failed');
+            }
+
+            updateProgress(90, 'Uploading transcript to S3...');
+            
+            // Brief delay to show final progress
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            updateProgress(100, 'Complete!');
+            
+            // Show result
+            showResult(result);
+
+        } catch (error) {
+            console.error('Transcription error:', error);
+            showError(error.message);
+        } finally {
+            isProcessing = false;
+            transcribeBtn.disabled = false;
+        }
+    }
+
+    function showResult(data) {
+        hideAllSections();
+        
+        // Populate result fields
+        document.getElementById('result-job-id').textContent = data.job_id;
+        document.getElementById('result-audio-url').textContent = data.audio_url;
+        document.getElementById('result-audio-url').href = data.audio_url;
+        document.getElementById('result-transcript-url').textContent = data.transcript_url;
+        document.getElementById('result-transcript-url').href = data.transcript_url;
+        
+        // Transcription details
+        document.getElementById('result-duration').textContent = formatDuration(data.duration);
+        document.getElementById('result-language').textContent = data.language || 'Unknown';
+        document.getElementById('result-word-count').textContent = data.word_count || 0;
+        document.getElementById('result-processing-time').textContent = `${data.processing_time} seconds`;
+        
+        // Transcript preview (first 500 characters)
+        const preview = data.transcript_text || '';
+        document.getElementById('result-transcript-preview').textContent = 
+            preview.length > 500 ? preview.substring(0, 500) + '...' : preview;
+        
+        resultSection.classList.remove('hidden');
+        showToast('Transcription completed successfully!', 'success');
+    }
+
+    function showError(message) {
+        hideAllSections();
+        document.getElementById('error-message').textContent = message;
+        errorSection.classList.remove('hidden');
+        showToast(message, 'error');
+    }
+
+    function formatDuration(seconds) {
+        if (!seconds) return 'Unknown';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        if (mins > 0) {
+            return `${mins}m ${secs}s`;
+        }
+        return `${secs}s`;
+    }
+</script>
+{% endblock %}

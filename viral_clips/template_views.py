@@ -36,3 +36,9 @@ def home_page(request):
 def test_stage1_upload(request):
     """Test page for Stage 1: Video upload and pre-processing"""
     return render(request, 'test/stage1_upload.html')
+
+
+@login_required
+def test_stage2_transcription(request):
+    """Test page for Stage 2: Audio transcription"""
+    return render(request, 'test/stage2_transcription.html')
