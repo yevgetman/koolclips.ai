@@ -7,6 +7,8 @@ from django.conf import settings
 import json
 import uuid
 import io
+import os
+import logging
 from datetime import datetime
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
@@ -15,7 +17,10 @@ from .serializers import (
     TranscriptSegmentSerializer, ClippedVideoSerializer
 )
 from .services.s3_service import S3Service
+from .services.preprocessing_service import PreprocessingService
 from .utils import detect_file_type
+
+logger = logging.getLogger(__name__)
 
 
 class VideoJobViewSet(viewsets.ModelViewSet):
@@ -934,3 +939,147 @@ def cleanup_all_clips(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def extract_audio_from_video(request):
+    """
+    Extract audio from an uploaded video file (Stage 1 preprocessing)
+    
+    This endpoint downloads a video from S3, extracts the audio using ffmpeg,
+    uploads the extracted audio back to S3, and returns both URLs.
+    
+    POST /api/upload/extract-audio/
+    Body: {
+        "s3_key": "uploads/direct/uuid/video.mp4",
+        "job_id": "uuid"  # Optional, for organizing files
+    }
+    
+    Returns: {
+        "success": true,
+        "original_video_url": "https://...",
+        "extracted_audio_url": "https://...",
+        "audio_s3_key": "uploads/uuid/audio/video.mp3",
+        "file_type": "video",
+        "extraction_time": 12.5
+    }
+    """
+    import time
+    start_time = time.time()
+    temp_video = None
+    temp_audio = None
+    
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured. Cannot extract audio.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get request data
+        s3_key = request.data.get('s3_key')
+        job_id = request.data.get('job_id', str(uuid.uuid4()))
+        
+        if not s3_key:
+            return Response({
+                'success': False,
+                'error': 's3_key is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Detect file type from s3_key
+        file_type = detect_file_type(s3_key)
+        
+        if file_type == 'audio':
+            # Audio file - no extraction needed, just return the original URL
+            s3_service = S3Service()
+            original_url = s3_service.get_public_url_from_key(s3_key)
+            
+            return Response({
+                'success': True,
+                'original_url': original_url,
+                'extracted_audio_url': original_url,  # Same as original for audio
+                'audio_s3_key': s3_key,
+                'file_type': 'audio',
+                'extraction_needed': False,
+                'extraction_time': round(time.time() - start_time, 2)
+            }, status=status.HTTP_200_OK)
+        
+        if file_type != 'video':
+            return Response({
+                'success': False,
+                'error': f'Unsupported file type. Expected video or audio file.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Initialize services
+        s3_service = S3Service()
+        
+        # Verify file exists in S3
+        if not s3_service.file_exists(s3_key):
+            return Response({
+                'success': False,
+                'error': 'Video file not found in S3'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get original video URL
+        original_video_url = s3_service.get_public_url_from_key(s3_key)
+        
+        # Download video from S3
+        logger.info(f"Downloading video from S3: {s3_key}")
+        temp_video = s3_service.download_file(s3_key)
+        logger.info(f"Downloaded to: {temp_video}")
+        
+        # Extract audio using PreprocessingService
+        logger.info(f"Extracting audio from video")
+        preprocessing = PreprocessingService()
+        temp_audio = preprocessing.extract_audio_from_video(temp_video, output_format='mp3')
+        logger.info(f"Audio extracted to: {temp_audio}")
+        
+        # Upload extracted audio to S3
+        audio_filename = os.path.basename(temp_audio)
+        audio_s3_key = f"uploads/{job_id}/audio/{audio_filename}"
+        
+        logger.info(f"Uploading audio to S3: {audio_s3_key}")
+        audio_urls = s3_service.upload_file(
+            temp_audio,
+            audio_s3_key,
+            content_type='audio/mpeg'
+        )
+        
+        extraction_time = round(time.time() - start_time, 2)
+        logger.info(f"Audio extraction complete in {extraction_time}s: {audio_urls['cloudfront_url']}")
+        
+        return Response({
+            'success': True,
+            'original_video_url': original_video_url,
+            'extracted_audio_url': audio_urls['cloudfront_url'],
+            'audio_s3_url': audio_urls['s3_url'],
+            'audio_s3_key': audio_s3_key,
+            'file_type': 'video',
+            'extraction_needed': True,
+            'extraction_time': extraction_time
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Audio extraction failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    finally:
+        # Clean up temp files
+        if temp_video and os.path.exists(temp_video):
+            try:
+                os.remove(temp_video)
+                logger.info(f"Cleaned up temp video: {temp_video}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp video: {e}")
+        
+        if temp_audio and os.path.exists(temp_audio):
+            try:
+                os.remove(temp_audio)
+                logger.info(f"Cleaned up temp audio: {temp_audio}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp audio: {e}")

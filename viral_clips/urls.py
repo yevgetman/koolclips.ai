@@ -5,7 +5,7 @@ from .views import (
     get_presigned_upload_url, create_job_from_s3, upload_test_result,
     initiate_multipart_upload, get_multipart_upload_urls,
     complete_multipart_upload, abort_multipart_upload, proxy_upload_chunk,
-    bulk_cleanup_cloudcube, cleanup_all_clips
+    bulk_cleanup_cloudcube, cleanup_all_clips, extract_audio_from_video
 )
 
 router = DefaultRouter()
@@ -27,6 +27,8 @@ urlpatterns = [
     path('upload/proxy-chunk/', proxy_upload_chunk, name='proxy-upload-chunk'),
     # Create job after upload
     path('upload/create-job/', create_job_from_s3, name='create-job-from-s3'),
+    # Audio extraction (Stage 1 preprocessing)
+    path('upload/extract-audio/', extract_audio_from_video, name='extract-audio-from-video'),
     # Cleanup utilities
     path('cleanup/bulk/', bulk_cleanup_cloudcube, name='bulk-cleanup-cloudcube'),
     path('cleanup/clips/', cleanup_all_clips, name='cleanup-all-clips'),
