@@ -1269,6 +1269,7 @@ def analyze_segments(request):
     Body: {
         "transcript_url": "https://cloudfront.net/.../transcript.json",
         "provider": "anthropic",  # or "openai"
+        "model": "claude-sonnet-4-5-20250929",  # optional, defaults based on provider
         "num_segments": 3,
         "max_duration": 300,  # seconds
         "custom_instructions": null  # optional
@@ -1292,6 +1293,7 @@ def analyze_segments(request):
         # Get request data
         transcript_url = request.data.get('transcript_url')
         provider = request.data.get('provider', 'anthropic')
+        model = request.data.get('model')  # Optional, LLMService will use default if not provided
         num_segments = request.data.get('num_segments', 3)
         max_duration = request.data.get('max_duration', 300)
         custom_instructions = request.data.get('custom_instructions')
@@ -1334,10 +1336,10 @@ def analyze_segments(request):
         else:
             transcript_data = transcript_json
         
-        logger.info(f"Transcript loaded, sending to {provider} for analysis...")
+        logger.info(f"Transcript loaded, sending to {provider} ({model or 'default'}) for analysis...")
         
-        # Initialize LLM service with specified provider
-        llm = LLMService(provider=provider)
+        # Initialize LLM service with specified provider and model
+        llm = LLMService(provider=provider, model=model)
         
         # Analyze transcript
         segments = llm.analyze_transcript(

@@ -41,7 +41,47 @@
                     <select id="llm-provider" 
                             class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
                         <option value="anthropic" selected>Anthropic (Claude)</option>
-                        <option value="openai">OpenAI (GPT-4)</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+                </div>
+
+                <!-- LLM Model -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Model
+                    </label>
+                    <select id="llm-model" 
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <!-- Anthropic Models -->
+                        <optgroup label="Claude 4.5 (Latest)" id="anthropic-models">
+                            <option value="claude-sonnet-4-5-20250929" selected>Claude Sonnet 4.5 (Recommended)</option>
+                            <option value="claude-opus-4-5-20251101">Claude Opus 4.5 (Most Powerful)</option>
+                            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fastest)</option>
+                        </optgroup>
+                        <optgroup label="Claude 4">
+                            <option value="claude-opus-4-1-20250805">Claude Opus 4.1</option>
+                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                        </optgroup>
+                        <optgroup label="Claude 3.x">
+                            <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet</option>
+                            <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                        </optgroup>
+                        <!-- OpenAI Models (hidden by default) -->
+                        <optgroup label="GPT-4o" id="openai-models" class="hidden">
+                            <option value="gpt-4o">GPT-4o (Recommended)</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                            <option value="gpt-4-turbo-preview">GPT-4 Turbo Preview</option>
+                        </optgroup>
+                        <optgroup label="GPT-4">
+                            <option value="gpt-4">GPT-4</option>
+                            <option value="gpt-4-0125-preview">GPT-4 0125 Preview</option>
+                        </optgroup>
+                        <optgroup label="O-Series (Reasoning)">
+                            <option value="o1">O1</option>
+                            <option value="o3-mini">O3 Mini</option>
+                            <option value="o4-mini-2025-04-16">O4 Mini</option>
+                        </optgroup>
                     </select>
                 </div>
 
@@ -184,6 +224,7 @@
     // DOM elements
     const transcriptUrlInput = document.getElementById('transcript-url');
     const llmProviderSelect = document.getElementById('llm-provider');
+    const llmModelSelect = document.getElementById('llm-model');
     const numSegmentsInput = document.getElementById('num-segments');
     const maxDurationSelect = document.getElementById('max-duration');
     const customInstructionsInput = document.getElementById('custom-instructions');
@@ -192,16 +233,77 @@
     const resultSection = document.getElementById('result-section');
     const errorSection = document.getElementById('error-section');
 
+    // Model options by provider
+    const anthropicModels = [
+        { group: 'Claude 4.5 (Latest)', options: [
+            { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5 (Recommended)' },
+            { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5 (Most Powerful)' },
+            { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Fastest)' }
+        ]},
+        { group: 'Claude 4', options: [
+            { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1' },
+            { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' }
+        ]},
+        { group: 'Claude 3.x', options: [
+            { value: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet' },
+            { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+            { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' }
+        ]}
+    ];
+
+    const openaiModels = [
+        { group: 'GPT-4o', options: [
+            { value: 'gpt-4o', label: 'GPT-4o (Recommended)' },
+            { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+            { value: 'gpt-4-turbo-preview', label: 'GPT-4 Turbo Preview' }
+        ]},
+        { group: 'GPT-4', options: [
+            { value: 'gpt-4', label: 'GPT-4' },
+            { value: 'gpt-4-0125-preview', label: 'GPT-4 0125 Preview' }
+        ]},
+        { group: 'O-Series (Reasoning)', options: [
+            { value: 'o1', label: 'O1' },
+            { value: 'o3-mini', label: 'O3 Mini' },
+            { value: 'o4-mini-2025-04-16', label: 'O4 Mini' }
+        ]}
+    ];
+
     // State
     let isProcessing = false;
 
     // Event listeners
     analyzeBtn.addEventListener('click', startAnalysis);
+    llmProviderSelect.addEventListener('change', updateModelOptions);
     
     // Allow Enter key to trigger analysis
     transcriptUrlInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') startAnalysis();
     });
+
+    // Update model dropdown based on provider
+    function updateModelOptions() {
+        const provider = llmProviderSelect.value;
+        const models = provider === 'anthropic' ? anthropicModels : openaiModels;
+        
+        // Clear current options
+        llmModelSelect.innerHTML = '';
+        
+        // Add new options
+        models.forEach(group => {
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = group.group;
+            group.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.label;
+                optgroup.appendChild(option);
+            });
+            llmModelSelect.appendChild(optgroup);
+        });
+    }
+
+    // Initialize model options
+    updateModelOptions();
 
     function hideAllSections() {
         progressSection.classList.add('hidden');
@@ -219,6 +321,7 @@
 
         const transcriptUrl = transcriptUrlInput.value.trim();
         const provider = llmProviderSelect.value;
+        const model = llmModelSelect.value;
         const numSegments = parseInt(numSegmentsInput.value) || 3;
         const maxDuration = parseInt(maxDurationSelect.value) || 0;
         const customInstructions = customInstructionsInput.value.trim() || null;
@@ -253,6 +356,7 @@
                 body: JSON.stringify({
                     transcript_url: transcriptUrl,
                     provider: provider,
+                    model: model,
                     num_segments: numSegments,
                     max_duration: maxDuration > 0 ? maxDuration : 300,  // Default to 5 min max if not specified
                     custom_instructions: customInstructions

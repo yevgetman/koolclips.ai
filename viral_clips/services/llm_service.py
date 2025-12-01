@@ -23,10 +23,10 @@ class LLMService:
         # Set model based on provider if not specified
         if model:
             self.model = model
-        elif provider == 'openai':
+        elif self.provider == 'openai':
             self.model = 'gpt-4o'
-        elif provider == 'anthropic':
-            self.model = 'claude-3-opus-20240229'
+        elif self.provider == 'anthropic':
+            self.model = 'claude-sonnet-4-5-20250929'
         else:
             self.model = settings.LLM_MODEL
         
