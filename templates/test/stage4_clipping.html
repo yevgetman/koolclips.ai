@@ -288,9 +288,12 @@
         
         // Show progress
         progressSection.classList.remove('hidden');
-        updateProgress(10, 'Sending to Shotstack...');
+        updateProgress(5, 'Sending to Shotstack...');
+
+        const startTime = Date.now();
 
         try {
+            // Step 1: Start the clip creation
             const response = await fetch('/api/create-clip/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
@@ -302,19 +305,67 @@
                 })
             });
 
-            // Poll for updates since this is a long-running process
-            updateProgress(30, 'Shotstack processing video...');
-            
-            const result = await response.json();
+            const startResult = await response.json();
 
-            if (!result.success) {
-                throw new Error(result.error || 'Clip creation failed');
+            if (!startResult.success) {
+                throw new Error(startResult.error || 'Failed to start clip creation');
             }
 
-            updateProgress(100, 'Complete!');
+            const renderId = startResult.render_id;
+            updateProgress(10, 'Shotstack render queued...');
             
-            // Show result
-            showResult(result);
+            // Step 2: Poll for status
+            let attempts = 0;
+            const maxAttempts = 60; // 5 minutes max (5 second intervals)
+            
+            while (attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                
+                const statusResponse = await fetch(`/api/clip-status/${renderId}/`, {
+                    headers: getAuthHeaders()
+                });
+                
+                const statusResult = await statusResponse.json();
+                
+                if (!statusResult.success) {
+                    throw new Error(statusResult.error || 'Failed to check status');
+                }
+                
+                const progress = Math.min(10 + (statusResult.progress * 0.8), 90);
+                
+                if (statusResult.status === 'done') {
+                    updateProgress(95, 'Uploading to S3...');
+                    
+                    // Brief delay to show upload progress
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    updateProgress(100, 'Complete!');
+                    
+                    const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                    
+                    // Show result
+                    showResult({
+                        ...statusResult,
+                        ...startResult,
+                        processing_time: processingTime
+                    });
+                    return;
+                    
+                } else if (statusResult.status === 'failed') {
+                    throw new Error(statusResult.error || 'Render failed');
+                    
+                } else {
+                    // Still processing
+                    const statusText = statusResult.status === 'rendering' 
+                        ? `Rendering... ${statusResult.progress}%` 
+                        : 'Queued...';
+                    updateProgress(progress, statusText);
+                }
+                
+                attempts++;
+            }
+            
+            throw new Error('Clip creation timed out after 5 minutes');
 
         } catch (error) {
             console.error('Create clip error:', error);

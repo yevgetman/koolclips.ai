@@ -1424,10 +1424,10 @@ def analyze_segments(request):
 @parser_classes([JSONParser])
 def create_clip(request):
     """
-    Create a video clip using Shotstack API (Stage 4)
+    Start video clip creation using Shotstack API (Stage 4)
     
-    Takes video URL and segment timestamps, sends to Shotstack for clipping,
-    waits for render completion, uploads result to S3, and returns the public URL.
+    Initiates clip creation and returns render_id for polling status.
+    Use /api/clip-status/ to check render progress.
     
     POST /api/create-clip/
     Body: {
@@ -1439,18 +1439,11 @@ def create_clip(request):
     
     Returns: {
         "success": true,
-        "clip_url": "https://cloudfront.net/.../clip.mp4",
-        "duration": 59.8,
-        "processing_time": 45.2
+        "render_id": "abc123",
+        "status": "queued",
+        "duration": 59.8
     }
     """
-    import time
-    import tempfile
-    import requests as http_requests
-    
-    start_time = time.time()
-    temp_clip = None
-    
     try:
         # Get request data
         video_url = request.data.get('video_url')
@@ -1486,7 +1479,7 @@ def create_clip(request):
         # Initialize Shotstack service
         shotstack = ShotstackService()
         
-        # Create clip - sends to Shotstack
+        # Create clip - sends to Shotstack (returns immediately with render_id)
         logger.info("Sending to Shotstack for rendering...")
         render_id = shotstack.create_clip(
             media_url=video_url,
@@ -1497,73 +1490,110 @@ def create_clip(request):
         
         logger.info(f"Shotstack render initiated: {render_id}")
         
-        # Wait for render to complete (this can take a while)
-        logger.info("Waiting for Shotstack render to complete...")
-        render_status = shotstack.wait_for_render(render_id, max_wait=300, check_interval=5)
-        
-        shotstack_url = render_status['url']
-        logger.info(f"Shotstack render complete: {shotstack_url}")
-        
-        # Upload to S3 if configured
-        clip_url = shotstack_url  # Default to Shotstack URL
-        
-        if S3Service.is_s3_configured():
-            try:
-                s3_service = S3Service()
-                
-                # Download from Shotstack to temp file
-                logger.info("Downloading clip from Shotstack...")
-                response = http_requests.get(shotstack_url, stream=True)
-                response.raise_for_status()
-                
-                fd, temp_clip = tempfile.mkstemp(suffix='.mp4')
-                os.close(fd)
-                
-                with open(temp_clip, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                
-                logger.info(f"Downloaded clip to temp file: {temp_clip}")
-                
-                # Upload to S3
-                job_id = str(uuid.uuid4())
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                clip_s3_key = f"clips/{job_id}/clip_{timestamp}.mp4"
-                
-                s3_service.upload_file(temp_clip, clip_s3_key)
-                
-                # Get CloudFront URL
-                if s3_service.cloudfront_domain:
-                    clip_url = f"https://{s3_service.cloudfront_domain}/{clip_s3_key}"
-                else:
-                    clip_url = s3_service.get_public_url_from_key(clip_s3_key)
-                
-                logger.info(f"Clip uploaded to S3: {clip_url}")
-                
-            except Exception as upload_err:
-                logger.error(f"Failed to upload clip to S3: {str(upload_err)}")
-                # Fall back to Shotstack URL
-                clip_url = shotstack_url
-        
-        # Calculate processing time
-        processing_time = round(time.time() - start_time, 2)
-        
-        logger.info(f"Clip creation complete in {processing_time}s")
-        
         return Response({
             'success': True,
-            'clip_url': clip_url,
-            'shotstack_url': shotstack_url,
             'render_id': render_id,
+            'status': 'queued',
             'segment_title': segment_title,
             'start_time': segment_start,
             'end_time': segment_end,
-            'duration': duration,
-            'processing_time': processing_time
+            'duration': duration
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
         logger.error(f"Clip creation failed: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_clip_status(request, render_id):
+    """
+    Check status of a Shotstack render and return result when complete (Stage 4)
+    
+    GET /api/clip-status/<render_id>/
+    
+    Returns: {
+        "success": true,
+        "status": "done",  // queued, rendering, done, failed
+        "progress": 100,
+        "clip_url": "https://cloudfront.net/.../clip.mp4"  // only when done
+    }
+    """
+    import tempfile
+    import requests as http_requests
+    
+    temp_clip = None
+    
+    try:
+        # Initialize Shotstack service
+        shotstack = ShotstackService()
+        
+        # Get render status
+        render_status = shotstack.get_render_status(render_id)
+        
+        response_data = {
+            'success': True,
+            'status': render_status['status'],
+            'progress': render_status.get('progress', 0)
+        }
+        
+        # If done, download and upload to S3
+        if render_status['status'] == 'done':
+            shotstack_url = render_status['url']
+            logger.info(f"Shotstack render complete: {shotstack_url}")
+            
+            clip_url = shotstack_url  # Default to Shotstack URL
+            
+            if S3Service.is_s3_configured():
+                try:
+                    s3_service = S3Service()
+                    
+                    # Download from Shotstack to temp file
+                    logger.info("Downloading clip from Shotstack...")
+                    dl_response = http_requests.get(shotstack_url, stream=True)
+                    dl_response.raise_for_status()
+                    
+                    fd, temp_clip = tempfile.mkstemp(suffix='.mp4')
+                    os.close(fd)
+                    
+                    with open(temp_clip, 'wb') as f:
+                        for chunk in dl_response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    
+                    logger.info(f"Downloaded clip to temp file: {temp_clip}")
+                    
+                    # Upload to S3
+                    job_id = str(uuid.uuid4())
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    clip_s3_key = f"clips/{job_id}/clip_{timestamp}.mp4"
+                    
+                    s3_service.upload_file(temp_clip, clip_s3_key)
+                    
+                    # Get CloudFront URL
+                    if s3_service.cloudfront_domain:
+                        clip_url = f"https://{s3_service.cloudfront_domain}/{clip_s3_key}"
+                    else:
+                        clip_url = s3_service.get_public_url_from_key(clip_s3_key)
+                    
+                    logger.info(f"Clip uploaded to S3: {clip_url}")
+                    
+                except Exception as upload_err:
+                    logger.error(f"Failed to upload clip to S3: {str(upload_err)}")
+                    clip_url = shotstack_url
+            
+            response_data['clip_url'] = clip_url
+            response_data['shotstack_url'] = shotstack_url
+        
+        elif render_status['status'] == 'failed':
+            response_data['error'] = render_status.get('error', 'Render failed')
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Failed to get clip status: {str(e)}")
         return Response({
             'success': False,
             'error': str(e)

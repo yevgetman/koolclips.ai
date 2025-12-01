@@ -6,7 +6,7 @@ from .views import (
     initiate_multipart_upload, get_multipart_upload_urls,
     complete_multipart_upload, abort_multipart_upload, proxy_upload_chunk,
     bulk_cleanup_cloudcube, cleanup_all_clips, extract_audio_from_video,
-    transcribe_audio, analyze_segments, create_clip
+    transcribe_audio, analyze_segments, create_clip, get_clip_status
 )
 
 router = DefaultRouter()
@@ -36,6 +36,7 @@ urlpatterns = [
     path('analyze-segments/', analyze_segments, name='analyze-segments'),
     # Clip creation (Stage 4)
     path('create-clip/', create_clip, name='create-clip'),
+    path('clip-status/<str:render_id>/', get_clip_status, name='get-clip-status'),
     # Cleanup utilities
     path('cleanup/bulk/', bulk_cleanup_cloudcube, name='bulk-cleanup-cloudcube'),
     path('cleanup/clips/', cleanup_all_clips, name='cleanup-all-clips'),
