@@ -5,6 +5,7 @@ from .views import (
     get_presigned_upload_url, create_job_from_s3, upload_test_result,
     initiate_multipart_upload, get_multipart_upload_urls,
     complete_multipart_upload, abort_multipart_upload, proxy_upload_chunk,
+    import_from_url, get_import_status,
     bulk_cleanup_cloudcube, cleanup_all_clips, extract_audio_from_video,
     transcribe_audio, analyze_segments, create_clip, get_clip_status,
     process_workflow, get_workflow_status
@@ -27,6 +28,9 @@ urlpatterns = [
     path('upload/multipart/complete/', complete_multipart_upload, name='complete-multipart-upload'),
     path('upload/multipart/abort/', abort_multipart_upload, name='abort-multipart-upload'),
     path('upload/proxy-chunk/', proxy_upload_chunk, name='proxy-upload-chunk'),
+    # URL import (YouTube, Google Drive, Dropbox, etc.)
+    path('upload/import-url/', import_from_url, name='import-from-url'),
+    path('upload/import-status/<str:job_id>/', get_import_status, name='get-import-status'),
     # Create job after upload
     path('upload/create-job/', create_job_from_s3, name='create-job-from-s3'),
     # Audio extraction (Stage 1 preprocessing)

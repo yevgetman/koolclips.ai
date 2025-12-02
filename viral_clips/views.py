@@ -554,6 +554,135 @@ def abort_multipart_upload(request):
 
 
 @api_view(['POST'])
+@parser_classes([JSONParser])
+def import_from_url(request):
+    """
+    Import video from external URL (YouTube, Google Drive, Dropbox, etc.)
+    
+    POST /api/upload/import-url/
+    Body: {
+        "url": "https://youtube.com/watch?v=..."
+    }
+    
+    Returns: {
+        "success": true,
+        "job_id": "uuid",
+        "status": "importing",
+        "source": "youtube"
+    }
+    """
+    from django.core.cache import cache
+    
+    try:
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            return Response({
+                'success': False,
+                'error': 'S3 storage not configured. Cannot import files.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        # Get URL from request
+        url = request.data.get('url')
+        if not url:
+            return Response({
+                'success': False,
+                'error': 'url is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate URL
+        from .services.url_import_service import URLImportService
+        service = URLImportService()
+        validation = service.validate_url(url)
+        
+        if not validation['valid']:
+            return Response({
+                'success': False,
+                'error': validation['error']
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+        
+        # Set initial status in cache
+        cache_key = f"url_import_progress_{job_id}"
+        cache.set(cache_key, {
+            'status': 'queued',
+            'stage': 'queued',
+            'percent': 0,
+            'message': 'Import queued...'
+        }, timeout=3600)
+        
+        # Queue the import task
+        from .tasks import import_video_from_url
+        task = import_video_from_url.delay(job_id, url)
+        
+        return Response({
+            'success': True,
+            'job_id': job_id,
+            'task_id': str(task.id),
+            'status': 'importing',
+            'source': validation['source']
+        }, status=status.HTTP_202_ACCEPTED)
+        
+    except Exception as e:
+        logger.exception(f"Error initiating URL import: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_import_status(request, job_id):
+    """
+    Get the status of a URL import
+    
+    GET /api/upload/import-status/<job_id>/
+    
+    Returns: {
+        "status": "importing|completed|failed",
+        "stage": "downloading|uploading|complete",
+        "percent": 50,
+        "message": "Downloading video...",
+        "job_id": "uuid" (if completed),
+        "public_url": "https://..." (if completed),
+        "error": "..." (if failed)
+    }
+    """
+    from django.core.cache import cache
+    
+    try:
+        cache_key = f"url_import_progress_{job_id}"
+        status_data = cache.get(cache_key)
+        
+        if status_data:
+            return Response(status_data, status=status.HTTP_200_OK)
+        
+        # Check if job exists in database
+        try:
+            job = VideoJob.objects.get(id=job_id)
+            return Response({
+                'status': 'completed',
+                'stage': 'complete',
+                'percent': 100,
+                'job_id': str(job.id),
+                'public_url': job.media_file_cloudfront_url or job.media_file_s3_url
+            }, status=status.HTTP_200_OK)
+        except VideoJob.DoesNotExist:
+            return Response({
+                'status': 'not_found',
+                'error': 'Import not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+    except Exception as e:
+        logger.exception(f"Error getting import status: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
 @parser_classes([MultiPartParser])
 def proxy_upload_chunk(request):
     """

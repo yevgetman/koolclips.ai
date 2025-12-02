@@ -1,8 +1,10 @@
 from celery import shared_task
 from django.utils import timezone
 from django.core.files.base import File
+from django.core.cache import cache
 import logging
 import os
+import uuid
 
 from .models import VideoJob, TranscriptSegment, ClippedVideo
 from .services import PreprocessingService, ElevenLabsService, LLMService, ShotstackService
@@ -557,3 +559,146 @@ def scheduled_cloudcube_cleanup(retention_days=5):
     except Exception as e:
         logger.error(f"Scheduled Cloudcube cleanup failed: {str(e)}")
         raise
+
+
+@shared_task(bind=True, max_retries=3)
+def import_video_from_url(self, job_id: str, url: str):
+    """
+    Background task to import video from external URL
+    
+    Downloads video from YouTube, Google Drive, Dropbox, or direct URL
+    and uploads to S3, then creates a VideoJob.
+    
+    Args:
+        job_id: Pre-generated job UUID
+        url: Source URL to import from
+    """
+    from .services.url_import_service import URLImportService
+    
+    cache_key = f"url_import_progress_{job_id}"
+    
+    def update_progress(progress_data):
+        """Update progress in cache for polling"""
+        cache.set(cache_key, {
+            'status': 'importing',
+            **progress_data
+        }, timeout=3600)
+    
+    try:
+        logger.info(f"Starting URL import for job {job_id}: {url}")
+        
+        # Set initial progress
+        cache.set(cache_key, {
+            'status': 'importing',
+            'stage': 'starting',
+            'percent': 0,
+            'message': 'Starting import...'
+        }, timeout=3600)
+        
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            raise ValueError("S3 storage not configured. Cannot import files.")
+        
+        # Initialize import service
+        service = URLImportService()
+        
+        # Validate URL
+        validation = service.validate_url(url)
+        if not validation['valid']:
+            raise ValueError(validation['error'])
+        
+        # Import the video
+        result = service.import_video(url, job_id, progress_callback=update_progress)
+        
+        if not result['success']:
+            raise ValueError("Import failed")
+        
+        # Determine file type
+        from .utils import detect_file_type
+        file_type = detect_file_type(result['filename'])
+        
+        # Create the VideoJob
+        job = VideoJob.objects.create(
+            id=job_id,
+            file_type=file_type,
+            status='uploaded'
+        )
+        
+        # Set S3 URLs
+        job.media_file_s3_url = result.get('s3_url') or result['public_url']
+        job.media_file_cloudfront_url = result.get('cloudfront_url') or result['public_url']
+        job.media_file.name = result['s3_key']
+        job.save()
+        
+        logger.info(f"URL import complete for job {job_id}: {result['s3_key']}")
+        
+        # Update cache with success
+        cache.set(cache_key, {
+            'status': 'completed',
+            'stage': 'complete',
+            'percent': 100,
+            'message': 'Import complete',
+            'job_id': job_id,
+            's3_key': result['s3_key'],
+            'public_url': result['public_url'],
+            'filename': result['filename'],
+            'file_size': result.get('file_size'),
+            'title': result.get('title'),
+            'duration': result.get('duration'),
+            'source': result['source']
+        }, timeout=3600)
+        
+        return {
+            'success': True,
+            'job_id': job_id,
+            's3_key': result['s3_key'],
+            'public_url': result['public_url']
+        }
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"URL import failed for job {job_id}: {error_message}")
+        
+        # Update cache with error
+        cache.set(cache_key, {
+            'status': 'failed',
+            'error': error_message
+        }, timeout=3600)
+        
+        # Retry for transient errors
+        if self.request.retries < self.max_retries:
+            if 'timeout' in error_message.lower() or 'connection' in error_message.lower():
+                raise self.retry(exc=e, countdown=60)
+        
+        raise
+
+
+@shared_task
+def get_url_import_status(job_id: str) -> dict:
+    """
+    Get the current status of a URL import
+    
+    Args:
+        job_id: The job ID to check
+        
+    Returns:
+        dict: Current import status
+    """
+    cache_key = f"url_import_progress_{job_id}"
+    status = cache.get(cache_key)
+    
+    if status:
+        return status
+    
+    # Check if job exists in database
+    try:
+        job = VideoJob.objects.get(id=job_id)
+        return {
+            'status': 'completed' if job.status == 'uploaded' else job.status,
+            'job_id': job_id
+        }
+    except VideoJob.DoesNotExist:
+        return {
+            'status': 'not_found',
+            'error': 'Import not found'
+        }

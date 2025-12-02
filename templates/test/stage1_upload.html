@@ -26,8 +26,121 @@
             </div>
         </div>
 
+        <!-- Upload Method Tabs -->
+        <div class="mb-6">
+            <div class="flex space-x-4 border-b border-gray-700">
+                <button id="tab-file" class="px-4 py-2 text-sm font-medium text-primary-400 border-b-2 border-primary-400 -mb-px">
+                    📁 File Upload
+                </button>
+                <button id="tab-url" class="px-4 py-2 text-sm font-medium text-gray-400 hover:text-gray-300 border-b-2 border-transparent -mb-px">
+                    🔗 Import from URL
+                </button>
+            </div>
+        </div>
+
+        <!-- URL Import Section -->
+        <div id="url-import-section" class="hidden mb-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+                <h3 class="text-lg font-medium text-white mb-4">Import from URL</h3>
+                <p class="text-gray-400 text-sm mb-6">
+                    Import videos directly from YouTube, Google Drive, Dropbox, or any direct video URL.
+                </p>
+                
+                <!-- Supported Sources -->
+                <div class="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="flex items-center space-x-2 bg-gray-700/50 px-3 py-2 rounded-lg">
+                        <span class="text-red-500">▶</span>
+                        <span class="text-gray-300 text-sm">YouTube</span>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-gray-700/50 px-3 py-2 rounded-lg">
+                        <span class="text-blue-400">📁</span>
+                        <span class="text-gray-300 text-sm">Google Drive</span>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-gray-700/50 px-3 py-2 rounded-lg">
+                        <span class="text-blue-500">📦</span>
+                        <span class="text-gray-300 text-sm">Dropbox</span>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-gray-700/50 px-3 py-2 rounded-lg">
+                        <span class="text-gray-400">🔗</span>
+                        <span class="text-gray-300 text-sm">Direct URL</span>
+                    </div>
+                </div>
+                
+                <!-- URL Input -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Video URL
+                    </label>
+                    <div class="flex space-x-3">
+                        <input type="url" id="import-url" placeholder="https://youtube.com/watch?v=... or Google Drive/Dropbox link"
+                               class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <button id="import-btn" 
+                                class="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Import
+                        </button>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500">
+                        Note: YouTube imports are for personal/authorized content only.
+                    </p>
+                </div>
+                
+                <!-- Import Progress -->
+                <div id="import-progress-section" class="hidden mb-6">
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-300 font-medium" id="import-status">Importing...</span>
+                            <span class="text-primary-400 font-bold" id="import-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                            <div id="import-progress-bar" class="bg-gradient-to-r from-primary-600 to-primary-400 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <p class="mt-2 text-xs text-gray-400" id="import-stage">Starting import...</p>
+                    </div>
+                </div>
+                
+                <!-- Import Result -->
+                <div id="import-result-section" class="hidden">
+                    <div class="bg-green-900/20 border border-green-700/50 rounded-lg p-6">
+                        <div class="flex items-start space-x-3">
+                            <svg class="h-6 w-6 text-green-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div class="flex-1">
+                                <h3 class="text-lg font-medium text-green-300 mb-2">Import Complete!</h3>
+                                <div class="space-y-2">
+                                    <p class="text-sm text-gray-300">
+                                        <span class="text-gray-400">Title:</span> 
+                                        <span id="import-result-title" class="font-medium"></span>
+                                    </p>
+                                    <p class="text-sm text-gray-300">
+                                        <span class="text-gray-400">Job ID:</span> 
+                                        <span id="import-result-job-id" class="font-mono text-xs bg-gray-700 px-2 py-1 rounded"></span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Import Error -->
+                <div id="import-error-section" class="hidden">
+                    <div class="bg-red-900/20 border border-red-700/50 rounded-lg p-6">
+                        <div class="flex items-start space-x-3">
+                            <svg class="h-6 w-6 text-red-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div class="flex-1">
+                                <h3 class="text-lg font-medium text-red-300 mb-2">Import Failed</h3>
+                                <p class="text-sm text-gray-300" id="import-error-message"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Upload Section -->
-        <div class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+        <div id="file-upload-section" class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
             <!-- File Picker -->
             <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-300 mb-2">
@@ -877,6 +990,167 @@
         const minutes = Math.floor(seconds / 60);
         const secs = Math.round(seconds % 60);
         return `${minutes}m ${secs}s`;
+    }
+
+    // ===========================================
+    // URL Import Functionality
+    // ===========================================
+    
+    // Tab switching
+    const tabFile = document.getElementById('tab-file');
+    const tabUrl = document.getElementById('tab-url');
+    const fileUploadSection = document.getElementById('file-upload-section');
+    const urlImportSection = document.getElementById('url-import-section');
+    
+    tabFile.addEventListener('click', () => {
+        tabFile.classList.add('text-primary-400', 'border-primary-400');
+        tabFile.classList.remove('text-gray-400', 'border-transparent');
+        tabUrl.classList.remove('text-primary-400', 'border-primary-400');
+        tabUrl.classList.add('text-gray-400', 'border-transparent');
+        fileUploadSection.classList.remove('hidden');
+        urlImportSection.classList.add('hidden');
+    });
+    
+    tabUrl.addEventListener('click', () => {
+        tabUrl.classList.add('text-primary-400', 'border-primary-400');
+        tabUrl.classList.remove('text-gray-400', 'border-transparent');
+        tabFile.classList.remove('text-primary-400', 'border-primary-400');
+        tabFile.classList.add('text-gray-400', 'border-transparent');
+        urlImportSection.classList.remove('hidden');
+        fileUploadSection.classList.add('hidden');
+    });
+    
+    // URL Import
+    const importUrlInput = document.getElementById('import-url');
+    const importBtn = document.getElementById('import-btn');
+    const importProgressSection = document.getElementById('import-progress-section');
+    const importResultSection = document.getElementById('import-result-section');
+    const importErrorSection = document.getElementById('import-error-section');
+    
+    let importJobId = null;
+    let importPollInterval = null;
+    
+    importBtn.addEventListener('click', startImport);
+    importUrlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') startImport();
+    });
+    
+    async function startImport() {
+        const url = importUrlInput.value.trim();
+        
+        if (!url) {
+            showToast('Please enter a URL', 'error');
+            return;
+        }
+        
+        // Reset UI
+        importProgressSection.classList.remove('hidden');
+        importResultSection.classList.add('hidden');
+        importErrorSection.classList.add('hidden');
+        importBtn.disabled = true;
+        importUrlInput.disabled = true;
+        
+        updateImportProgress(0, 'Starting import...', 'Connecting to source...');
+        
+        try {
+            // Start import
+            const response = await fetch('/api/upload/import-url/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ url })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to start import');
+            }
+            
+            importJobId = data.job_id;
+            updateImportProgress(5, 'Import started', `Source: ${data.source}`);
+            
+            // Start polling for status
+            startImportPolling();
+            
+        } catch (error) {
+            showImportError(error.message);
+        }
+    }
+    
+    function startImportPolling() {
+        // Poll every 2 seconds
+        importPollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/upload/import-status/${importJobId}/`);
+                const data = await response.json();
+                
+                if (data.status === 'completed') {
+                    stopImportPolling();
+                    showImportSuccess(data);
+                } else if (data.status === 'failed') {
+                    stopImportPolling();
+                    showImportError(data.error || 'Import failed');
+                } else if (data.status === 'importing') {
+                    // Update progress
+                    const percent = data.percent || 0;
+                    const stage = data.stage || 'processing';
+                    const message = data.message || 'Importing...';
+                    
+                    let stageText = 'Processing...';
+                    if (stage === 'downloading') {
+                        stageText = `Downloading: ${formatBytes(data.downloaded || 0)} / ${formatBytes(data.total || 0)}`;
+                    } else if (stage === 'uploading') {
+                        stageText = 'Uploading to storage...';
+                    } else if (stage === 'processing') {
+                        stageText = 'Processing video...';
+                    }
+                    
+                    updateImportProgress(percent, message, stageText);
+                }
+            } catch (error) {
+                console.error('Error polling import status:', error);
+            }
+        }, 2000);
+    }
+    
+    function stopImportPolling() {
+        if (importPollInterval) {
+            clearInterval(importPollInterval);
+            importPollInterval = null;
+        }
+    }
+    
+    function updateImportProgress(percent, status, stage) {
+        document.getElementById('import-percent').textContent = `${Math.round(percent)}%`;
+        document.getElementById('import-status').textContent = status;
+        document.getElementById('import-stage').textContent = stage;
+        document.getElementById('import-progress-bar').style.width = `${percent}%`;
+    }
+    
+    function showImportSuccess(data) {
+        importProgressSection.classList.add('hidden');
+        importResultSection.classList.remove('hidden');
+        
+        document.getElementById('import-result-title').textContent = data.title || data.filename || 'Video imported';
+        document.getElementById('import-result-job-id').textContent = data.job_id;
+        
+        importBtn.disabled = false;
+        importUrlInput.disabled = false;
+        importUrlInput.value = '';
+        
+        showToast('Video imported successfully!', 'success');
+    }
+    
+    function showImportError(message) {
+        importProgressSection.classList.add('hidden');
+        importErrorSection.classList.remove('hidden');
+        
+        document.getElementById('import-error-message').textContent = message;
+        
+        importBtn.disabled = false;
+        importUrlInput.disabled = false;
+        
+        showToast(`Import failed: ${message}`, 'error');
     }
 </script>
 {% endblock %}
