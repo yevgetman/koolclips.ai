@@ -63,6 +63,6 @@ def workflow_page(request):
 
 
 @login_required
-def test_stage1_tus_upload(request):
-    """Test page for Stage 1: TUS resumable upload (Uppy + TUS)"""
-    return render(request, 'test/stage1_tus_upload.html')
+def test_stage1_uppy_upload(request):
+    """Test page for Stage 1: Uppy + S3 Multipart upload"""
+    return render(request, 'test/stage1_uppy_upload.html')

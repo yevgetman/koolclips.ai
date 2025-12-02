@@ -9,7 +9,6 @@ from .views import (
     transcribe_audio, analyze_segments, create_clip, get_clip_status,
     process_workflow, get_workflow_status
 )
-from .tus_views import tus_endpoint, tus_upload_info
 
 router = DefaultRouter()
 router.register(r'jobs', VideoJobViewSet, basename='videojob')
@@ -47,8 +46,4 @@ urlpatterns = [
     path('cleanup/clips/', cleanup_all_clips, name='cleanup-all-clips'),
     # Test utilities
     path('test-results/upload/', upload_test_result, name='upload-test-result'),
-    # TUS resumable upload endpoints
-    path('tus/', tus_endpoint, name='tus-create'),
-    path('tus/<str:upload_id>', tus_endpoint, name='tus-upload'),
-    path('tus/<str:upload_id>/info', tus_upload_info, name='tus-upload-info'),
 ]

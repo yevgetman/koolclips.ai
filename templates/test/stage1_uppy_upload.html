@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Test Stage 1: TUS Upload - Viral Clips{% endblock %}
+{% block title %}Test Stage 1: Uppy Upload - Viral Clips{% endblock %}
 
 {% block extra_head %}
 <!-- Uppy CSS -->
@@ -86,45 +86,18 @@
     <div class="max-w-4xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
-            <h1 class="text-3xl font-bold text-white mb-2">🧪 Stage 1 Test: TUS Resumable Upload</h1>
-            <p class="text-gray-400">Test Uppy + TUS protocol for resumable large file uploads.</p>
+            <h1 class="text-3xl font-bold text-white mb-2">🧪 Stage 1 Test: Uppy + S3 Multipart Upload</h1>
+            <p class="text-gray-400">Upload large files directly to S3 with Uppy's polished UI and built-in resilience.</p>
             <div class="mt-4 bg-purple-900/20 border border-purple-700/50 rounded-lg p-4">
                 <p class="text-purple-300 text-sm">
-                    <strong>TUS Protocol Benefits:</strong> Resumable uploads • Network resilience • Pause/Resume • Automatic retry • Progress tracking
+                    <strong>Features:</strong> Direct S3 upload • Parallel chunks • Pause/Resume • Automatic retry • Progress tracking • localStorage persistence
                 </p>
-            </div>
-        </div>
-
-        <!-- Compare with Current Implementation -->
-        <div class="mb-8 bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h2 class="text-lg font-semibold text-white mb-4">📊 Current vs TUS Implementation</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-gray-700/50 rounded-lg p-4">
-                    <h3 class="text-sm font-medium text-gray-300 mb-2">Current (S3 Multipart)</h3>
-                    <ul class="text-xs text-gray-400 space-y-1">
-                        <li>✓ Direct S3 upload via presigned URLs</li>
-                        <li>✓ Parallel chunk uploads</li>
-                        <li>✗ No resume on page reload</li>
-                        <li>✗ Custom retry logic needed</li>
-                        <li>✗ Basic progress UI</li>
-                    </ul>
-                </div>
-                <div class="bg-purple-900/30 rounded-lg p-4 border border-purple-700/30">
-                    <h3 class="text-sm font-medium text-purple-300 mb-2">TUS Protocol</h3>
-                    <ul class="text-xs text-purple-200 space-y-1">
-                        <li>✓ True resumable uploads</li>
-                        <li>✓ Survives page reload/close</li>
-                        <li>✓ Built-in retry & backoff</li>
-                        <li>✓ Pause/Resume controls</li>
-                        <li>✓ Rich Uppy UI</li>
-                    </ul>
-                </div>
             </div>
         </div>
 
         <!-- Uppy Dashboard -->
         <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
-            <h2 class="text-xl font-semibold text-white mb-4">Upload with Uppy + TUS</h2>
+            <h2 class="text-xl font-semibold text-white mb-4">Upload with Uppy</h2>
             <div id="uppy-dashboard"></div>
         </div>
 
@@ -168,7 +141,7 @@
         <!-- Back link -->
         <div class="mt-8 text-center">
             <a href="{% url 'test-stage1' %}" class="text-primary-400 hover:text-primary-300">
-                ← Back to S3 Multipart Upload
+                ← Back to Basic Upload
             </a>
             <span class="text-gray-600 mx-4">|</span>
             <a href="{% url 'home' %}" class="text-gray-400 hover:text-gray-300">
@@ -185,6 +158,15 @@
     // Get auth token
     function getAuthToken() {
         return localStorage.getItem('auth_token');
+    }
+
+    // Get auth headers
+    function getAuthHeaders() {
+        const token = getAuthToken();
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+        };
     }
 
     // Event logger
@@ -229,19 +211,28 @@
     // Store upload results
     let uploadResults = [];
 
-    // Initialize Uppy
+    // Calculate optimal part size (matching our backend logic)
+    function calculatePartSize(fileSize) {
+        const MIN_PART_SIZE = 5 * 1024 * 1024;      // 5MB minimum (S3 requirement)
+        const MAX_PART_SIZE = 500 * 1024 * 1024;   // 500MB maximum
+        const TARGET_PARTS = 100;                   // Aim for ~100 parts
+        
+        let partSize = Math.ceil(fileSize / TARGET_PARTS);
+        partSize = Math.max(partSize, MIN_PART_SIZE);
+        partSize = Math.min(partSize, MAX_PART_SIZE);
+        
+        return partSize;
+    }
+
+    // Initialize Uppy with S3 Multipart
     const uppy = new Uppy.Uppy({
-        id: 'uppy-tus',
+        id: 'uppy-s3-multipart',
         autoProceed: false,
         allowMultipleUploadBatches: true,
         restrictions: {
             maxFileSize: 20 * 1024 * 1024 * 1024, // 20GB
             allowedFileTypes: ['video/*', 'audio/*'],
             maxNumberOfFiles: 5
-        },
-        meta: {
-            // Add auth token to metadata
-            authToken: getAuthToken()
         }
     });
 
@@ -253,7 +244,7 @@
         width: '100%',
         showProgressDetails: true,
         showRemoveButtonAfterComplete: true,
-        note: 'Video or audio files up to 20GB. Supports resume on network failure.',
+        note: 'Video or audio files up to 20GB. Direct S3 upload with pause/resume.',
         proudlyDisplayPoweredByUppy: false,
         theme: 'dark',
         locale: {
@@ -264,28 +255,145 @@
         }
     });
 
-    // Add TUS plugin for resumable uploads
-    uppy.use(Uppy.Tus, {
-        endpoint: '/api/tus/',
-        retryDelays: [0, 1000, 3000, 5000, 10000], // Retry delays in ms
-        chunkSize: 50 * 1024 * 1024, // 50MB chunks
-        removeFingerprintOnSuccess: true, // Clean up after successful upload
-        headers: () => ({
-            'Authorization': `Bearer ${getAuthToken()}`
-        }),
-        onBeforeRequest: (req, file) => {
-            logEvent(`Preparing request for ${file.name}`, 'info');
+    // Add AwsS3Multipart plugin with custom companion functions
+    uppy.use(Uppy.AwsS3Multipart, {
+        // Use our Django backend for S3 operations
+        companionUrl: null, // We're not using Companion server
+        
+        // Number of concurrent part uploads
+        limit: 6,
+        
+        // Retry configuration
+        retryDelays: [0, 1000, 3000, 5000, 10000],
+        
+        // Custom function to create multipart upload
+        async createMultipartUpload(file) {
+            logEvent(`Creating multipart upload for ${file.name}...`, 'info');
+            
+            const partSize = calculatePartSize(file.size);
+            
+            const response = await fetch('/api/upload/multipart/initiate/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    filename: file.name,
+                    content_type: file.type,
+                    file_size: file.size,
+                    part_size: partSize
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to initiate upload');
+            }
+            
+            logEvent(`Upload initiated: ${data.num_parts} parts, ${formatBytes(partSize)} each`, 'success');
+            
+            // Store metadata for later
+            file.s3Multipart = {
+                uploadId: data.upload_id,
+                key: data.s3_key,
+                jobId: data.job_id,
+                numParts: data.num_parts,
+                partSize: partSize
+            };
+            
+            return {
+                uploadId: data.upload_id,
+                key: data.s3_key
+            };
         },
-        onAfterResponse: (req, res) => {
-            // Log TUS-specific headers
-            const uploadOffset = res.getHeader('Upload-Offset');
-            if (uploadOffset) {
-                logEvent(`Server confirmed offset: ${formatBytes(parseInt(uploadOffset))}`, 'progress');
+        
+        // Custom function to get presigned URLs for parts
+        async signPart(file, { uploadId, key, partNumber, body }) {
+            logEvent(`Getting presigned URL for part ${partNumber}...`, 'progress');
+            
+            const response = await fetch('/api/upload/multipart/urls/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    upload_id: uploadId,
+                    s3_key: key,
+                    part_numbers: [partNumber]
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success || !data.urls || data.urls.length === 0) {
+                throw new Error(`Failed to get URL for part ${partNumber}`);
+            }
+            
+            return {
+                url: data.urls[0].url,
+                headers: {}
+            };
+        },
+        
+        // Custom function to complete multipart upload
+        async completeMultipartUpload(file, { uploadId, key, parts }) {
+            logEvent(`Completing upload with ${parts.length} parts...`, 'info');
+            
+            // Sort parts by part number (S3 requirement)
+            const sortedParts = parts.sort((a, b) => a.PartNumber - b.PartNumber);
+            
+            const response = await fetch('/api/upload/multipart/complete/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    upload_id: uploadId,
+                    s3_key: key,
+                    parts: sortedParts
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to complete upload');
+            }
+            
+            logEvent(`✓ Upload complete: ${file.name}`, 'success');
+            
+            // Store result for display
+            uploadResults.push({
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                s3Key: key,
+                publicUrl: data.public_url,
+                jobId: file.s3Multipart?.jobId
+            });
+            
+            return { location: data.public_url };
+        },
+        
+        // Custom function to abort multipart upload
+        async abortMultipartUpload(file, { uploadId, key }) {
+            logEvent(`Aborting upload for ${file.name}...`, 'warning');
+            
+            try {
+                await fetch('/api/upload/multipart/abort/', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        upload_id: uploadId,
+                        s3_key: key
+                    })
+                });
+                logEvent(`Upload aborted: ${file.name}`, 'warning');
+            } catch (error) {
+                console.error('Failed to abort upload:', error);
             }
         },
-        onShouldRetry: (err, retryAttempt, options, next) => {
-            logEvent(`Retry attempt ${retryAttempt}: ${err.message}`, 'warning');
-            return next(err);
+        
+        // Custom function to list uploaded parts (for resume)
+        async listParts(file, { uploadId, key }) {
+            // For now, return empty array (no resume from previous session)
+            // Could implement server-side listParts if needed
+            return [];
         }
     });
 
@@ -305,24 +413,17 @@
     uppy.on('upload-progress', (file, progress) => {
         const percent = ((progress.bytesUploaded / progress.bytesTotal) * 100).toFixed(1);
         // Only log at 10% intervals to avoid spam
-        if (Math.floor(percent) % 10 === 0 && !file._lastLoggedPercent || file._lastLoggedPercent !== Math.floor(percent)) {
-            file._lastLoggedPercent = Math.floor(percent);
-            logEvent(`${file.name}: ${percent}% (${formatBytes(progress.bytesUploaded)} / ${formatBytes(progress.bytesTotal)})`, 'progress');
+        const loggedPercent = Math.floor(percent / 10) * 10;
+        if (!file._lastLoggedPercent || file._lastLoggedPercent !== loggedPercent) {
+            file._lastLoggedPercent = loggedPercent;
+            if (loggedPercent > 0) {
+                logEvent(`${file.name}: ${loggedPercent}% (${formatBytes(progress.bytesUploaded)} / ${formatBytes(progress.bytesTotal)})`, 'progress');
+            }
         }
     });
 
     uppy.on('upload-success', (file, response) => {
         logEvent(`✓ Upload complete: ${file.name}`, 'success');
-        console.log('Upload response:', response);
-        
-        // Store result
-        uploadResults.push({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            uploadURL: response.uploadURL,
-            tusId: response.uploadURL ? response.uploadURL.split('/').pop() : null
-        });
     });
 
     uppy.on('upload-error', (file, error, response) => {
@@ -335,7 +436,7 @@
                  result.failed.length > 0 ? 'warning' : 'success');
         
         if (result.successful.length > 0) {
-            showResults(result.successful);
+            showResults();
         }
     });
 
@@ -361,13 +462,12 @@
     });
 
     // Show results
-    function showResults(successfulUploads) {
+    function showResults() {
         const resultSection = document.getElementById('result-section');
         const resultContent = document.getElementById('result-content');
         
-        resultContent.innerHTML = successfulUploads.map((file, index) => {
-            const result = uploadResults[index] || {};
-            const isVideo = file.type && file.type.startsWith('video/');
+        resultContent.innerHTML = uploadResults.map((result) => {
+            const isVideo = result.type && result.type.startsWith('video/');
             
             return `
                 <div class="bg-gray-700 rounded-lg p-4">
@@ -380,23 +480,22 @@
                                 }
                             </svg>
                             <div>
-                                <p class="text-sm font-medium text-white">${file.name}</p>
-                                <p class="text-xs text-gray-400">${formatBytes(file.size)} • ${file.type || 'unknown'}</p>
+                                <p class="text-sm font-medium text-white">${result.name}</p>
+                                <p class="text-xs text-gray-400">${formatBytes(result.size)} • ${result.type || 'unknown'}</p>
                             </div>
                         </div>
                         <span class="text-green-400 text-sm">✓ Uploaded</span>
                     </div>
-                    ${result.tusId ? `
-                        <div class="mt-3 pt-3 border-t border-gray-600">
-                            <p class="text-xs text-gray-400">TUS ID: <code class="text-purple-400">${result.tusId}</code></p>
-                        </div>
-                    ` : ''}
+                    <div class="mt-3 pt-3 border-t border-gray-600">
+                        <p class="text-xs text-gray-400 break-all">S3 Key: <code class="text-purple-400">${result.s3Key}</code></p>
+                        ${result.publicUrl ? `<p class="text-xs text-gray-400 mt-1">URL: <a href="${result.publicUrl}" target="_blank" class="text-blue-400 hover:underline">${result.publicUrl.substring(0, 60)}...</a></p>` : ''}
+                    </div>
                 </div>
             `;
         }).join('');
         
         // Show extract audio button if any video was uploaded
-        const hasVideo = successfulUploads.some(f => f.type && f.type.startsWith('video/'));
+        const hasVideo = uploadResults.some(r => r.type && r.type.startsWith('video/'));
         if (hasVideo) {
             document.getElementById('extract-audio-btn').classList.remove('hidden');
         }
@@ -414,10 +513,38 @@
         eventLog.innerHTML = '<div class="text-gray-500">Waiting for upload events...</div>';
     });
 
+    // Extract audio button handler
+    document.getElementById('extract-audio-btn').addEventListener('click', async () => {
+        const videoResult = uploadResults.find(r => r.type && r.type.startsWith('video/'));
+        if (!videoResult) return;
+        
+        logEvent(`Extracting audio from ${videoResult.name}...`, 'info');
+        
+        try {
+            const response = await fetch('/api/upload/extract-audio/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    s3_key: videoResult.s3Key,
+                    job_id: videoResult.jobId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                logEvent(`✓ Audio extracted: ${data.audio_url || 'Processing...'}`, 'success');
+            } else {
+                logEvent(`✗ Audio extraction failed: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            logEvent(`✗ Audio extraction error: ${error.message}`, 'error');
+        }
+    });
+
     // Log initialization
-    logEvent('Uppy + TUS initialized', 'success');
-    logEvent(`Endpoint: /api/tus/`, 'info');
-    logEvent(`Chunk size: ${formatBytes(50 * 1024 * 1024)}`, 'info');
+    logEvent('Uppy + S3 Multipart initialized', 'success');
+    logEvent('Direct S3 upload with 6 parallel chunks', 'info');
     logEvent(`Max file size: ${formatBytes(20 * 1024 * 1024 * 1024)}`, 'info');
 </script>
 {% endblock %}

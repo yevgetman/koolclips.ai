@@ -14,14 +14,14 @@
                     <strong>Stage 1 Pipeline:</strong> Upload → Store in S3 → Extract Audio (if video) → Store Audio in S3
                 </p>
             </div>
-            <!-- TUS Alternative Link -->
+            <!-- Uppy Alternative Link -->
             <div class="mt-4 bg-purple-900/20 border border-purple-700/50 rounded-lg p-4">
                 <p class="text-purple-300 text-sm">
-                    <strong>Try TUS Resumable Uploads:</strong> 
-                    <a href="{% url 'test-stage1-tus' %}" class="text-purple-400 hover:text-purple-300 underline">
-                        Test Uppy + TUS →
+                    <strong>Try Uppy + S3 Multipart:</strong> 
+                    <a href="{% url 'test-stage1-uppy' %}" class="text-purple-400 hover:text-purple-300 underline">
+                        Test Uppy Upload →
                     </a>
-                    <span class="text-purple-400/70"> (pause/resume, survives page reload)</span>
+                    <span class="text-purple-400/70"> (pause/resume, retry, better UX)</span>
                 </p>
             </div>
         </div>
