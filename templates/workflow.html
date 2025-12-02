@@ -2,6 +2,85 @@
 
 {% block title %}Create Clips - Viral Clips{% endblock %}
 
+{% block extra_head %}
+<!-- Uppy CSS -->
+<link href="https://releases.transloadit.com/uppy/v3.27.0/uppy.min.css" rel="stylesheet">
+<style>
+    /* Custom Uppy theme overrides for dark mode */
+    .uppy-Dashboard {
+        background-color: #1f2937 !important;
+    }
+    .uppy-Dashboard-inner {
+        background-color: #1f2937 !important;
+        border-color: #374151 !important;
+    }
+    .uppy-Dashboard-innerWrap {
+        background-color: #1f2937 !important;
+    }
+    .uppy-Dashboard-AddFiles {
+        border-color: #4b5563 !important;
+    }
+    .uppy-Dashboard-AddFiles-title {
+        color: #e5e7eb !important;
+    }
+    .uppy-Dashboard-note {
+        color: #9ca3af !important;
+    }
+    .uppy-DashboardTab-name {
+        color: #d1d5db !important;
+    }
+    .uppy-Dashboard-Item {
+        background-color: #374151 !important;
+        border-color: #4b5563 !important;
+    }
+    .uppy-Dashboard-Item-name {
+        color: #f3f4f6 !important;
+    }
+    .uppy-Dashboard-Item-statusSize {
+        color: #9ca3af !important;
+    }
+    .uppy-StatusBar {
+        background-color: #374151 !important;
+    }
+    .uppy-StatusBar-content {
+        color: #e5e7eb !important;
+    }
+    .uppy-StatusBar-statusPrimary {
+        color: #e5e7eb !important;
+    }
+    .uppy-StatusBar-statusSecondary {
+        color: #9ca3af !important;
+    }
+    .uppy-StatusBar-actionBtn--upload {
+        background-color: #0284c7 !important;
+    }
+    .uppy-StatusBar-actionBtn--upload:hover {
+        background-color: #0369a1 !important;
+    }
+    .uppy-DashboardContent-bar {
+        background-color: #374151 !important;
+        border-color: #4b5563 !important;
+    }
+    .uppy-DashboardContent-title {
+        color: #e5e7eb !important;
+    }
+    .uppy-Dashboard-browse {
+        color: #38bdf8 !important;
+    }
+    .uppy-Dashboard-dropFilesHereHint {
+        color: #9ca3af !important;
+        border-color: #4b5563 !important;
+    }
+    /* Progress bar colors */
+    .uppy-StatusBar-progress {
+        background-color: #0284c7 !important;
+    }
+    .uppy-StatusBar.is-complete .uppy-StatusBar-progress {
+        background-color: #10b981 !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-4xl mx-auto">
@@ -38,72 +117,23 @@
 
         <!-- Step 1: Upload Section -->
         <div id="upload-section" class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
-            <h2 class="text-xl font-semibold text-white mb-6">Step 1: Upload Your Video</h2>
+            <h2 class="text-xl font-semibold text-white mb-2">Step 1: Upload Your Video</h2>
+            <p class="text-gray-400 text-sm mb-6">Direct S3 upload with pause/resume support. Up to 20GB.</p>
             
-            <!-- Upload Zone -->
-            <div id="upload-zone" 
-                 class="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center hover:border-primary-500 transition-colors cursor-pointer"
-                 ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
-                <div class="space-y-4">
-                    <div class="mx-auto w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center">
-                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="text-lg text-gray-300">Drag and drop your video file here</p>
-                        <p class="text-sm text-gray-500 mt-1">or click to browse</p>
-                    </div>
-                    <input type="file" id="file-input" class="hidden" accept="video/*,audio/*" onchange="handleFileSelect(event)">
-                    <button onclick="document.getElementById('file-input').click()" 
-                            class="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-500 transition-colors">
-                        Select File
-                    </button>
-                    <p class="text-xs text-gray-500 mt-2">Supports MP4, MOV, AVI, MKV, MP3, WAV (up to 5GB)</p>
-                </div>
-            </div>
-
-            <!-- Selected File Info -->
-            <div id="selected-file-info" class="hidden mt-6 bg-gray-700 rounded-lg p-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p class="text-white font-medium" id="selected-file-name"></p>
-                            <p class="text-sm text-gray-400" id="selected-file-size"></p>
-                        </div>
-                    </div>
-                    <button onclick="clearSelectedFile()" class="text-gray-400 hover:text-red-400">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Upload Progress -->
-            <div id="upload-progress-section" class="hidden mt-6">
+            <!-- Uppy Dashboard -->
+            <div id="uppy-dashboard"></div>
+            
+            <!-- Audio Extraction Progress (shown after upload) -->
+            <div id="audio-extraction-section" class="hidden mt-6">
                 <div class="bg-gray-700 rounded-lg p-4">
                     <div class="flex justify-between mb-2">
-                        <span class="text-sm text-gray-300" id="upload-status">Uploading...</span>
-                        <span class="text-sm text-gray-400" id="upload-percent">0%</span>
+                        <span class="text-sm text-gray-300" id="extraction-status">Extracting audio...</span>
+                        <span class="text-sm text-primary-400">Processing</span>
                     </div>
-                    <div class="w-full bg-gray-600 rounded-full h-2">
-                        <div id="upload-progress-bar" class="bg-primary-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    <div class="w-full bg-gray-600 rounded-full h-2 overflow-hidden">
+                        <div class="bg-primary-500 h-2 rounded-full animate-pulse" style="width: 100%"></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Upload Button -->
-            <div class="mt-6">
-                <button id="upload-btn" onclick="startUpload()" disabled
-                        class="w-full bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    Upload & Extract Audio
-                </button>
             </div>
         </div>
 
@@ -303,6 +333,9 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<!-- Uppy JS -->
+<script src="https://releases.transloadit.com/uppy/v3.27.0/uppy.min.js"></script>
+
 <script>
     // State
     let selectedFile = null;
@@ -311,6 +344,7 @@
     let isAudioOnly = false;
     let workflowId = null;
     let processingStartTime = null;
+    let uploadResult = null;
 
     // Model options
     const anthropicModels = [
@@ -344,313 +378,247 @@
         ]}
     ];
 
-    // Initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        updateModelOptions();
+    // Format bytes helper
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Calculate optimal part size (matching backend logic)
+    function calculatePartSize(fileSize) {
+        const MIN_PART_SIZE = 5 * 1024 * 1024;      // 5MB minimum (S3 requirement)
+        const MAX_PART_SIZE = 500 * 1024 * 1024;   // 500MB maximum
+        const TARGET_PARTS = 100;                   // Aim for ~100 parts
+        
+        let partSize = Math.ceil(fileSize / TARGET_PARTS);
+        partSize = Math.max(partSize, MIN_PART_SIZE);
+        partSize = Math.min(partSize, MAX_PART_SIZE);
+        
+        return partSize;
+    }
+
+    // Initialize Uppy with S3 Multipart
+    const uppy = new Uppy.Uppy({
+        id: 'workflow-uppy',
+        autoProceed: false,
+        allowMultipleUploadBatches: false,
+        restrictions: {
+            maxFileSize: 20 * 1024 * 1024 * 1024, // 20GB
+            allowedFileTypes: ['video/*', 'audio/*'],
+            maxNumberOfFiles: 1
+        }
     });
 
-    // File handling
-    function handleDragOver(e) {
-        e.preventDefault();
-        e.currentTarget.classList.add('border-primary-500', 'bg-gray-700');
-    }
-
-    function handleDragLeave(e) {
-        e.preventDefault();
-        e.currentTarget.classList.remove('border-primary-500', 'bg-gray-700');
-    }
-
-    function handleDrop(e) {
-        e.preventDefault();
-        e.currentTarget.classList.remove('border-primary-500', 'bg-gray-700');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            selectFile(files[0]);
+    // Add Dashboard plugin
+    uppy.use(Uppy.Dashboard, {
+        target: '#uppy-dashboard',
+        inline: true,
+        height: 350,
+        width: '100%',
+        showProgressDetails: true,
+        showRemoveButtonAfterComplete: true,
+        note: 'Video or audio files up to 20GB. Direct S3 upload with pause/resume.',
+        proudlyDisplayPoweredByUppy: false,
+        theme: 'dark',
+        locale: {
+            strings: {
+                dropPasteFiles: 'Drop your video here or %{browseFiles}',
+                browseFiles: 'browse files'
+            }
         }
-    }
+    });
 
-    function handleFileSelect(e) {
-        if (e.target.files.length > 0) {
-            selectFile(e.target.files[0]);
-        }
-    }
-
-    function selectFile(file) {
-        const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm', 'audio/mpeg', 'audio/wav', 'audio/mp3'];
-        if (!validTypes.some(t => file.type.includes(t.split('/')[1]))) {
-            showToast('Please select a valid video or audio file', 'error');
-            return;
-        }
-
-        if (file.size > 5 * 1024 * 1024 * 1024) {
-            showToast('File size must be under 5GB', 'error');
-            return;
-        }
-
-        selectedFile = file;
-        isAudioOnly = file.type.startsWith('audio/');
+    // Add AwsS3Multipart plugin with custom companion functions
+    uppy.use(Uppy.AwsS3Multipart, {
+        companionUrl: null,
+        limit: 6,
+        retryDelays: [0, 1000, 3000, 5000, 10000],
         
-        document.getElementById('selected-file-name').textContent = file.name;
-        document.getElementById('selected-file-size').textContent = formatFileSize(file.size);
-        document.getElementById('selected-file-info').classList.remove('hidden');
-        document.getElementById('upload-btn').disabled = false;
-    }
-
-    function clearSelectedFile() {
-        selectedFile = null;
-        document.getElementById('selected-file-info').classList.add('hidden');
-        document.getElementById('upload-btn').disabled = true;
-        document.getElementById('file-input').value = '';
-    }
-
-    function formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-
-    // Upload state for multipart
-    let uploadState = {
-        uploadId: null,
-        s3Key: null,
-        jobId: null,
-        parts: [],
-        uploadedParts: 0,
-        totalParts: 0,
-        uploadedBytes: 0,
-        totalBytes: 0,
-        startTime: 0
-    };
-
-    function calculateOptimalPartSize(fileSize) {
-        const MB = 1024 * 1024;
-        const minPartSize = 5 * MB;
-        const maxParts = 10000;
-        
-        let partSize;
-        if (fileSize < 100 * MB) {
-            partSize = fileSize; // Single part for small files
-        } else if (fileSize < 500 * MB) {
-            partSize = 10 * MB;
-        } else if (fileSize < 1024 * MB) {
-            partSize = 20 * MB;
-        } else if (fileSize < 2 * 1024 * MB) {
-            partSize = 50 * MB;
-        } else {
-            partSize = 100 * MB;
-        }
-        
-        const numParts = Math.ceil(fileSize / partSize);
-        if (numParts > maxParts) {
-            partSize = Math.ceil(fileSize / maxParts);
-        }
-        
-        return Math.max(partSize, minPartSize);
-    }
-
-    function uploadWithProgress(url, blob, onProgress) {
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
+        async createMultipartUpload(file) {
+            const partSize = calculatePartSize(file.size);
             
-            // Timeout: 5 minutes per part (300 seconds)
-            xhr.timeout = 300000;
-            
-            xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
-                    onProgress(Math.round((e.loaded / e.total) * 100));
-                }
-            });
-            xhr.addEventListener('load', () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    resolve(xhr.getResponseHeader('ETag'));
-                } else {
-                    reject(new Error(`Upload failed with status ${xhr.status}`));
-                }
-            });
-            xhr.addEventListener('error', () => reject(new Error('Network error')));
-            xhr.addEventListener('timeout', () => reject(new Error('Upload timed out')));
-            xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
-            xhr.open('PUT', url);
-            xhr.send(blob);
-        });
-    }
-
-    // Upload using multipart (same as test page)
-    async function startUpload() {
-        if (!selectedFile) return;
-
-        document.getElementById('upload-btn').disabled = true;
-        document.getElementById('upload-progress-section').classList.remove('hidden');
-        
-        // Reset state
-        uploadState = {
-            uploadId: null,
-            s3Key: null,
-            jobId: null,
-            parts: [],
-            uploadedParts: 0,
-            totalParts: 0,
-            uploadedBytes: 0,
-            totalBytes: selectedFile.size,
-            startTime: Date.now()
-        };
-
-        const partSize = calculateOptimalPartSize(selectedFile.size);
-        const numParts = Math.ceil(selectedFile.size / partSize);
-        
-        try {
-            // Step 1: Initiate multipart upload
-            updateUploadProgress(2, 'Initiating upload...');
-            
-            const initResponse = await fetch('/api/upload/multipart/initiate/', {
+            const response = await fetch('/api/upload/multipart/initiate/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
-                    filename: selectedFile.name,
-                    content_type: selectedFile.type,
-                    file_size: selectedFile.size,
+                    filename: file.name,
+                    content_type: file.type,
+                    file_size: file.size,
                     part_size: partSize
                 })
             });
-
-            const initData = await initResponse.json();
-            if (!initData.success) {
-                throw new Error(initData.error || 'Failed to initiate upload');
-            }
-
-            uploadState.uploadId = initData.upload_id;
-            uploadState.s3Key = initData.s3_key;
-            uploadState.jobId = initData.job_id;
-            uploadState.totalParts = initData.num_parts;
-
-            // Step 2: Upload all parts with concurrency and retry logic
-            updateUploadProgress(5, `Uploading ${uploadState.totalParts} parts...`);
             
-            const concurrency = 4; // Reduced for better stability
-            const maxRetries = 3;
-            const partNumbers = Array.from({length: uploadState.totalParts}, (_, i) => i + 1);
-            let index = 0;
-
-            async function uploadPartWithRetry(partNumber, retryCount = 0) {
-                const start = (partNumber - 1) * partSize;
-                const end = Math.min(start + partSize, selectedFile.size);
-                const blob = selectedFile.slice(start, end);
-
-                try {
-                    // Get presigned URL for this part
-                    const urlResponse = await fetch('/api/upload/multipart/urls/', {
-                        method: 'POST',
-                        headers: getAuthHeaders(),
-                        body: JSON.stringify({
-                            upload_id: uploadState.uploadId,
-                            s3_key: uploadState.s3Key,
-                            part_numbers: [partNumber]
-                        })
-                    });
-
-                    const urlData = await urlResponse.json();
-                    if (!urlData.success || !urlData.urls?.length) {
-                        throw new Error(`Failed to get URL for part ${partNumber}`);
-                    }
-
-                    // Upload part
-                    const etag = await uploadWithProgress(urlData.urls[0].url, blob, (pct) => {
-                        // Update overall progress
-                        const partProgress = (uploadState.uploadedParts + pct/100) / uploadState.totalParts;
-                        const overall = 5 + Math.round(partProgress * 65);
-                        updateUploadProgress(overall, `Uploading part ${uploadState.uploadedParts + 1} of ${uploadState.totalParts}...`);
-                    });
-
-                    return { PartNumber: partNumber, ETag: etag, size: blob.size };
-                } catch (error) {
-                    if (retryCount < maxRetries) {
-                        console.log(`Retrying part ${partNumber} (attempt ${retryCount + 2}/${maxRetries + 1})...`);
-                        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
-                        await new Promise(r => setTimeout(r, delay));
-                        return uploadPartWithRetry(partNumber, retryCount + 1);
-                    }
-                    throw new Error(`Failed to upload part ${partNumber} after ${maxRetries + 1} attempts: ${error.message}`);
-                }
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Session expired. Please log in again.');
             }
-
-            async function uploadNextPart() {
-                while (index < partNumbers.length) {
-                    const partNumber = partNumbers[index++];
-                    const result = await uploadPartWithRetry(partNumber);
-                    uploadState.parts.push({ PartNumber: result.PartNumber, ETag: result.ETag });
-                    uploadState.uploadedParts++;
-                    uploadState.uploadedBytes += result.size;
-                }
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to initiate upload');
             }
-
-            // Run concurrent uploads
-            await Promise.all(Array(Math.min(concurrency, uploadState.totalParts)).fill().map(() => uploadNextPart()));
-
-            // Step 3: Complete multipart upload
-            updateUploadProgress(72, 'Finalizing upload...');
             
-            const sortedParts = uploadState.parts.sort((a, b) => a.PartNumber - b.PartNumber);
+            file.s3Multipart = {
+                uploadId: data.upload_id,
+                key: data.s3_key,
+                jobId: data.job_id,
+                numParts: data.num_parts,
+                partSize: partSize
+            };
             
-            const completeResponse = await fetch('/api/upload/multipart/complete/', {
+            return {
+                uploadId: data.upload_id,
+                key: data.s3_key
+            };
+        },
+        
+        async signPart(file, { uploadId, key, partNumber, body }) {
+            const response = await fetch('/api/upload/multipart/urls/', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
-                    upload_id: uploadState.uploadId,
-                    s3_key: uploadState.s3Key,
+                    upload_id: uploadId,
+                    s3_key: key,
+                    part_numbers: [partNumber]
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success || !data.urls || data.urls.length === 0) {
+                throw new Error(`Failed to get URL for part ${partNumber}`);
+            }
+            
+            return {
+                url: data.urls[0].url,
+                headers: {}
+            };
+        },
+        
+        async completeMultipartUpload(file, { uploadId, key, parts }) {
+            const sortedParts = parts.sort((a, b) => a.PartNumber - b.PartNumber);
+            
+            const response = await fetch('/api/upload/multipart/complete/', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    upload_id: uploadId,
+                    s3_key: key,
                     parts: sortedParts
                 })
             });
-
-            const completeData = await completeResponse.json();
-            if (!completeData.success) {
-                throw new Error(completeData.error || 'Failed to complete upload');
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to complete upload');
             }
-
-            const publicUrl = completeData.cloudfront_url || completeData.public_url;
-
-            // Step 4: Extract audio (if video)
-            if (!isAudioOnly) {
-                updateUploadProgress(80, 'Extracting audio...');
-                
-                const extractResponse = await fetch('/api/upload/extract-audio/', {
+            
+            // Store result for later use
+            uploadResult = {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                s3Key: key,
+                publicUrl: data.public_url,
+                cloudfrontUrl: data.cloudfront_url,
+                jobId: file.s3Multipart?.jobId
+            };
+            
+            return { location: data.public_url };
+        },
+        
+        async abortMultipartUpload(file, { uploadId, key }) {
+            try {
+                await fetch('/api/upload/multipart/abort/', {
                     method: 'POST',
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
-                        video_url: publicUrl,
-                        s3_key: uploadState.s3Key
+                        upload_id: uploadId,
+                        s3_key: key
                     })
                 });
+            } catch (error) {
+                console.error('Failed to abort upload:', error);
+            }
+        },
+        
+        async listParts(file, { uploadId, key }) {
+            return [];
+        }
+    });
 
-                const extractData = await extractResponse.json();
-                if (!extractData.success) {
-                    throw new Error(extractData.error || 'Audio extraction failed');
+    // Uppy event handlers
+    uppy.on('file-added', (file) => {
+        selectedFile = file.data;
+        isAudioOnly = file.type && file.type.startsWith('audio/');
+    });
+
+    uppy.on('file-removed', () => {
+        selectedFile = null;
+        uploadResult = null;
+    });
+
+    uppy.on('upload-error', (file, error) => {
+        showToast(`Upload failed: ${error.message}`, 'error');
+        console.error('Upload error:', error);
+    });
+
+    uppy.on('complete', async (result) => {
+        if (result.successful.length > 0 && uploadResult) {
+            // Upload complete - now extract audio if video
+            const publicUrl = uploadResult.cloudfrontUrl || uploadResult.publicUrl;
+            
+            if (!isAudioOnly) {
+                // Show extraction progress
+                document.getElementById('audio-extraction-section').classList.remove('hidden');
+                document.getElementById('extraction-status').textContent = 'Extracting audio from video...';
+                
+                try {
+                    const extractResponse = await fetch('/api/upload/extract-audio/', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                            video_url: publicUrl,
+                            s3_key: uploadResult.s3Key
+                        })
+                    });
+
+                    const extractData = await extractResponse.json();
+                    if (!extractData.success) {
+                        throw new Error(extractData.error || 'Audio extraction failed');
+                    }
+
+                    uploadedVideoUrl = publicUrl;
+                    uploadedAudioUrl = extractData.extracted_audio_url;
+                    
+                    document.getElementById('extraction-status').textContent = 'Audio extracted successfully!';
+                    
+                } catch (error) {
+                    showToast(`Audio extraction failed: ${error.message}`, 'error');
+                    showError(error.message);
+                    return;
                 }
-
-                uploadedVideoUrl = publicUrl;
-                uploadedAudioUrl = extractData.extracted_audio_url;
             } else {
                 uploadedVideoUrl = null;
                 uploadedAudioUrl = publicUrl;
             }
-
-            updateUploadProgress(100, 'Upload complete!');
             
-            // Show configure section
+            // Show configure section after a brief delay
             setTimeout(() => {
                 showConfigureSection();
             }, 500);
-
-        } catch (error) {
-            console.error('Upload error:', error);
-            showError(error.message);
         }
-    }
+    });
 
-    function updateUploadProgress(percent, status) {
-        document.getElementById('upload-progress-bar').style.width = percent + '%';
-        document.getElementById('upload-percent').textContent = percent + '%';
-        document.getElementById('upload-status').textContent = status;
-    }
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        updateModelOptions();
+    });
 
     // Configure section
     function showConfigureSection() {
