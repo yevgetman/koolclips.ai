@@ -475,12 +475,20 @@ def complete_multipart_upload(request):
                 'error': 'upload_id, s3_key, and parts are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Sanitize parts - S3 only accepts PartNumber and ETag
+        sanitized_parts = []
+        for part in parts:
+            sanitized_parts.append({
+                'PartNumber': part.get('PartNumber'),
+                'ETag': part.get('ETag')
+            })
+        
         # Complete multipart upload
         s3_service = S3Service()
         result = s3_service.complete_multipart_upload(
             s3_key=s3_key,
             upload_id=upload_id,
-            parts=parts
+            parts=sanitized_parts
         )
         
         # Get the public URL for the uploaded file
