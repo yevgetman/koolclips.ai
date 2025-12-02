@@ -388,6 +388,28 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
+    // Safe JSON parsing with error handling for HTML responses
+    async function safeJsonParse(response, context = 'API call') {
+        const contentType = response.headers.get('content-type');
+        
+        if (!response.ok) {
+            if (response.status === 503 || response.status === 504) {
+                throw new Error(`Server timeout during ${context}. Please try again with a smaller file.`);
+            }
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Session expired. Please log in again.');
+            }
+        }
+        
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error(`Non-JSON response from ${context}:`, text.substring(0, 500));
+            throw new Error(`Server error during ${context} (${response.status}). Please try again.`);
+        }
+        
+        return await response.json();
+    }
+
     // Calculate optimal part size (matching backend logic)
     function calculatePartSize(fileSize) {
         const MIN_PART_SIZE = 5 * 1024 * 1024;      // 5MB minimum (S3 requirement)
@@ -576,7 +598,7 @@
             if (!isAudioOnly) {
                 // Show extraction progress
                 document.getElementById('audio-extraction-section').classList.remove('hidden');
-                document.getElementById('extraction-status').textContent = 'Extracting audio from video...';
+                document.getElementById('extraction-status').textContent = 'Extracting audio from video (this may take a few minutes)...';
                 
                 try {
                     const extractResponse = await fetch('/api/upload/extract-audio/', {
@@ -588,7 +610,7 @@
                         })
                     });
 
-                    const extractData = await extractResponse.json();
+                    const extractData = await safeJsonParse(extractResponse, 'audio extraction');
                     if (!extractData.success) {
                         throw new Error(extractData.error || 'Audio extraction failed');
                     }
@@ -599,6 +621,7 @@
                     document.getElementById('extraction-status').textContent = 'Audio extracted successfully!';
                     
                 } catch (error) {
+                    console.error('Audio extraction error:', error);
                     showToast(`Audio extraction failed: ${error.message}`, 'error');
                     showError(error.message);
                     return;
@@ -704,7 +727,7 @@
                 })
             });
 
-            const transcribeResult = await transcribeResponse.json();
+            const transcribeResult = await safeJsonParse(transcribeResponse, 'transcription');
             if (!transcribeResult.success) {
                 throw new Error(transcribeResult.error || 'Transcription failed');
             }
@@ -730,7 +753,7 @@
                 })
             });
 
-            const analyzeResult = await analyzeResponse.json();
+            const analyzeResult = await safeJsonParse(analyzeResponse, 'segment analysis');
             if (!analyzeResult.success) {
                 throw new Error(analyzeResult.error || 'Segment analysis failed');
             }
