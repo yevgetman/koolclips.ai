@@ -402,20 +402,25 @@ def get_multipart_upload_urls(request):
                 'error': 'upload_id, s3_key, and part_numbers are required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Generate presigned URLs for requested parts
+        # Generate presigned URLs for requested parts only
         s3_service = S3Service()
         
-        # Generate URLs batch (more efficient than one at a time)
-        max_part = max(part_numbers)
-        all_urls = s3_service.generate_multipart_presigned_urls(
-            s3_key=s3_key,
-            upload_id=upload_id,
-            num_parts=max_part,
-            expiration=3600
-        )
-        
-        # Filter to only requested part numbers
-        urls = [url for url in all_urls if url['part_number'] in part_numbers]
+        urls = []
+        for part_number in part_numbers:
+            url = s3_service.s3_client.generate_presigned_url(
+                'upload_part',
+                Params={
+                    'Bucket': s3_service.input_bucket,
+                    'Key': s3_key,
+                    'UploadId': upload_id,
+                    'PartNumber': part_number
+                },
+                ExpiresIn=3600
+            )
+            urls.append({
+                'part_number': part_number,
+                'url': url
+            })
         
         return Response({
             'success': True,
