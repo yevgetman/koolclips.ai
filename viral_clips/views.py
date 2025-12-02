@@ -1096,10 +1096,10 @@ def cleanup_all_clips(request):
 @parser_classes([JSONParser])
 def extract_audio_from_video(request):
     """
-    Extract audio from an uploaded video file (Stage 1 preprocessing)
+    Start async audio extraction from an uploaded video file (Stage 1 preprocessing)
     
-    This endpoint downloads a video from S3, extracts the audio using ffmpeg,
-    uploads the extracted audio back to S3, and returns both URLs.
+    This endpoint starts a Celery task to extract audio and returns a task_id
+    for polling the status. Use /api/upload/extract-audio/status/<task_id>/ to check progress.
     
     POST /api/upload/extract-audio/
     Body: {
@@ -1109,17 +1109,14 @@ def extract_audio_from_video(request):
     
     Returns: {
         "success": true,
-        "original_video_url": "https://...",
-        "extracted_audio_url": "https://...",
-        "audio_s3_key": "uploads/uuid/audio/video.mp3",
-        "file_type": "video",
-        "extraction_time": 12.5
+        "task_id": "uuid",
+        "message": "Audio extraction started"
     }
+    
+    For audio files, returns immediately with the audio URL (no extraction needed).
     """
-    import time
-    start_time = time.time()
-    temp_video = None
-    temp_audio = None
+    from django.core.cache import cache
+    from .tasks import extract_audio_async
     
     try:
         # Validate S3 is configured
@@ -1143,18 +1140,19 @@ def extract_audio_from_video(request):
         file_type = detect_file_type(s3_key)
         
         if file_type == 'audio':
-            # Audio file - no extraction needed, just return the original URL
+            # Audio file - no extraction needed, return immediately
             s3_service = S3Service()
             original_url = s3_service.get_public_url_from_key(s3_key)
+            cloudfront_url = s3_service.get_cloudfront_url_from_key(s3_key)
             
             return Response({
                 'success': True,
                 'original_url': original_url,
-                'extracted_audio_url': original_url,  # Same as original for audio
+                'extracted_audio_url': cloudfront_url or original_url,
                 'audio_s3_key': s3_key,
                 'file_type': 'audio',
                 'extraction_needed': False,
-                'extraction_time': round(time.time() - start_time, 2)
+                'async': False
             }, status=status.HTTP_200_OK)
         
         if file_type != 'video':
@@ -1163,77 +1161,84 @@ def extract_audio_from_video(request):
                 'error': f'Unsupported file type. Expected video or audio file.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Initialize services
-        s3_service = S3Service()
+        # Generate task ID
+        task_id = str(uuid.uuid4())
         
-        # Verify file exists in S3
-        if not s3_service.file_exists(s3_key):
-            return Response({
-                'success': False,
-                'error': 'Video file not found in S3'
-            }, status=status.HTTP_404_NOT_FOUND)
+        # Initialize progress in cache
+        cache_key = f"audio_extraction_{task_id}"
+        cache.set(cache_key, {
+            'status': 'queued',
+            'stage': 'queued',
+            'percent': 0,
+            'message': 'Task queued for processing...'
+        }, timeout=3600)
         
-        # Get original video URL
-        original_video_url = s3_service.get_public_url_from_key(s3_key)
-        
-        # Download video from S3
-        logger.info(f"Downloading video from S3: {s3_key}")
-        temp_video = s3_service.download_file(s3_key)
-        logger.info(f"Downloaded to: {temp_video}")
-        
-        # Extract audio using PreprocessingService
-        logger.info(f"Extracting audio from video")
-        preprocessing = PreprocessingService()
-        temp_audio = preprocessing.extract_audio_from_video(temp_video, output_format='mp3')
-        logger.info(f"Audio extracted to: {temp_audio}")
-        
-        # Upload extracted audio to S3
-        audio_filename = os.path.basename(temp_audio)
-        audio_s3_key = f"uploads/{job_id}/audio/{audio_filename}"
-        
-        logger.info(f"Uploading audio to S3: {audio_s3_key}")
-        audio_urls = s3_service.upload_file(
-            temp_audio,
-            audio_s3_key,
-            content_type='audio/mpeg'
-        )
-        
-        extraction_time = round(time.time() - start_time, 2)
-        logger.info(f"Audio extraction complete in {extraction_time}s: {audio_urls['cloudfront_url']}")
+        # Start async task
+        logger.info(f"Starting async audio extraction task {task_id} for {s3_key}")
+        extract_audio_async.delay(task_id, s3_key, job_id)
         
         return Response({
             'success': True,
-            'original_video_url': original_video_url,
-            'extracted_audio_url': audio_urls['cloudfront_url'],
-            'audio_s3_url': audio_urls['s3_url'],
-            'audio_s3_key': audio_s3_key,
-            'file_type': 'video',
-            'extraction_needed': True,
-            'extraction_time': extraction_time
-        }, status=status.HTTP_200_OK)
+            'task_id': task_id,
+            'message': 'Audio extraction started',
+            'async': True
+        }, status=status.HTTP_202_ACCEPTED)
         
     except Exception as e:
-        logger.error(f"Audio extraction failed: {str(e)}")
+        logger.error(f"Failed to start audio extraction: {str(e)}")
         return Response({
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def extract_audio_status(request, task_id):
+    """
+    Check the status of an async audio extraction task
     
-    finally:
-        # Clean up temp files
-        if temp_video and os.path.exists(temp_video):
-            try:
-                os.remove(temp_video)
-                logger.info(f"Cleaned up temp video: {temp_video}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up temp video: {e}")
+    GET /api/upload/extract-audio/status/<task_id>/
+    
+    Returns: {
+        "success": true,
+        "status": "processing|completed|failed",
+        "stage": "downloading|extracting|uploading|complete",
+        "percent": 50,
+        "message": "Extracting audio...",
         
-        if temp_audio and os.path.exists(temp_audio):
-            try:
-                os.remove(temp_audio)
-                logger.info(f"Cleaned up temp audio: {temp_audio}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up temp audio: {e}")
+        # When completed:
+        "extracted_audio_url": "https://...",
+        "original_video_url": "https://...",
+        "audio_s3_key": "...",
+        "extraction_time": 12.5
+    }
+    """
+    from django.core.cache import cache
+    
+    try:
+        cache_key = f"audio_extraction_{task_id}"
+        status_data = cache.get(cache_key)
+        
+        if not status_data:
+            return Response({
+                'success': False,
+                'error': 'Task not found or expired'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        response_data = {
+            'success': True,
+            'task_id': task_id,
+            **status_data
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Failed to get extraction status: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])

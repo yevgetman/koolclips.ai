@@ -7,8 +7,8 @@ from .views import (
     complete_multipart_upload, abort_multipart_upload, proxy_upload_chunk,
     import_from_url, get_import_status,
     bulk_cleanup_cloudcube, cleanup_all_clips, extract_audio_from_video,
-    transcribe_audio, analyze_segments, create_clip, get_clip_status,
-    process_workflow, get_workflow_status
+    extract_audio_status, transcribe_audio, analyze_segments, create_clip,
+    get_clip_status, process_workflow, get_workflow_status
 )
 
 router = DefaultRouter()
@@ -33,8 +33,9 @@ urlpatterns = [
     path('upload/import-status/<str:job_id>/', get_import_status, name='get-import-status'),
     # Create job after upload
     path('upload/create-job/', create_job_from_s3, name='create-job-from-s3'),
-    # Audio extraction (Stage 1 preprocessing)
+    # Audio extraction (Stage 1 preprocessing) - async with status polling
     path('upload/extract-audio/', extract_audio_from_video, name='extract-audio-from-video'),
+    path('upload/extract-audio/status/<str:task_id>/', extract_audio_status, name='extract-audio-status'),
     # Transcription (Stage 2)
     path('transcribe/', transcribe_audio, name='transcribe-audio'),
     # Segment analysis (Stage 3)

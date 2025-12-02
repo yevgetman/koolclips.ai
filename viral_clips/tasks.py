@@ -702,3 +702,166 @@ def get_url_import_status(job_id: str) -> dict:
             'status': 'not_found',
             'error': 'Import not found'
         }
+
+
+@shared_task(bind=True, max_retries=2)
+def extract_audio_async(self, task_id: str, s3_key: str, job_id: str = None):
+    """
+    Async task to extract audio from a video file in S3.
+    
+    This task:
+    1. Downloads video from S3
+    2. Extracts audio using ffmpeg
+    3. Uploads audio back to S3
+    4. Updates progress in cache for polling
+    
+    Args:
+        task_id: Unique task ID for progress tracking
+        s3_key: S3 key of the video file
+        job_id: Optional job ID for organizing files
+    """
+    import time
+    
+    cache_key = f"audio_extraction_{task_id}"
+    temp_video = None
+    temp_audio = None
+    
+    def update_progress(stage: str, percent: int, message: str):
+        """Update progress in cache"""
+        cache.set(cache_key, {
+            'status': 'processing',
+            'stage': stage,
+            'percent': percent,
+            'message': message
+        }, timeout=3600)
+    
+    try:
+        start_time = time.time()
+        logger.info(f"Starting async audio extraction for task {task_id}: {s3_key}")
+        
+        # Initialize progress
+        update_progress('starting', 0, 'Starting audio extraction...')
+        
+        # Validate S3 is configured
+        if not S3Service.is_s3_configured():
+            raise ValueError("S3 storage not configured")
+        
+        s3_service = S3Service()
+        
+        # Verify file exists
+        update_progress('validating', 5, 'Validating video file...')
+        if not s3_service.file_exists(s3_key):
+            raise ValueError(f"Video file not found in S3: {s3_key}")
+        
+        # Detect file type
+        from .utils import detect_file_type
+        file_type = detect_file_type(s3_key)
+        
+        if file_type == 'audio':
+            # Audio file - no extraction needed
+            original_url = s3_service.get_public_url_from_key(s3_key)
+            cloudfront_url = s3_service.get_cloudfront_url_from_key(s3_key)
+            
+            cache.set(cache_key, {
+                'status': 'completed',
+                'stage': 'complete',
+                'percent': 100,
+                'message': 'Audio file - no extraction needed',
+                'original_url': original_url,
+                'extracted_audio_url': cloudfront_url or original_url,
+                'audio_s3_key': s3_key,
+                'file_type': 'audio',
+                'extraction_needed': False,
+                'extraction_time': round(time.time() - start_time, 2)
+            }, timeout=3600)
+            
+            return {'success': True, 'extraction_needed': False}
+        
+        if file_type != 'video':
+            raise ValueError(f"Unsupported file type: {file_type}")
+        
+        # Download video from S3
+        update_progress('downloading', 10, 'Downloading video from S3...')
+        logger.info(f"Downloading video from S3: {s3_key}")
+        temp_video = s3_service.download_file(s3_key)
+        logger.info(f"Downloaded to: {temp_video}")
+        
+        # Extract audio
+        update_progress('extracting', 40, 'Extracting audio (this may take a while)...')
+        logger.info("Extracting audio from video")
+        preprocessing = PreprocessingService()
+        temp_audio = preprocessing.extract_audio_from_video(temp_video, output_format='mp3')
+        logger.info(f"Audio extracted to: {temp_audio}")
+        
+        # Upload audio to S3
+        update_progress('uploading', 80, 'Uploading audio to S3...')
+        audio_filename = os.path.basename(temp_audio)
+        folder_id = job_id or str(uuid.uuid4())
+        audio_s3_key = f"uploads/{folder_id}/audio/{audio_filename}"
+        
+        logger.info(f"Uploading audio to S3: {audio_s3_key}")
+        audio_urls = s3_service.upload_file(
+            temp_audio,
+            audio_s3_key,
+            content_type='audio/mpeg'
+        )
+        
+        extraction_time = round(time.time() - start_time, 2)
+        logger.info(f"Audio extraction complete in {extraction_time}s: {audio_urls.get('cloudfront_url')}")
+        
+        # Get original video URL
+        original_video_url = s3_service.get_public_url_from_key(s3_key)
+        
+        # Store completed result in cache
+        cache.set(cache_key, {
+            'status': 'completed',
+            'stage': 'complete',
+            'percent': 100,
+            'message': 'Audio extraction complete',
+            'original_video_url': original_video_url,
+            'extracted_audio_url': audio_urls.get('cloudfront_url') or audio_urls['s3_url'],
+            'audio_s3_url': audio_urls['s3_url'],
+            'audio_s3_key': audio_s3_key,
+            'file_type': 'video',
+            'extraction_needed': True,
+            'extraction_time': extraction_time
+        }, timeout=3600)
+        
+        return {
+            'success': True,
+            'extracted_audio_url': audio_urls.get('cloudfront_url') or audio_urls['s3_url'],
+            'extraction_time': extraction_time
+        }
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Audio extraction failed for task {task_id}: {error_message}")
+        
+        # Store error in cache
+        cache.set(cache_key, {
+            'status': 'failed',
+            'error': error_message
+        }, timeout=3600)
+        
+        # Retry for transient errors
+        if self.request.retries < self.max_retries:
+            if 'timeout' in error_message.lower() or 'connection' in error_message.lower():
+                raise self.retry(exc=e, countdown=30)
+        
+        raise
+        
+    finally:
+        # Clean up temp files
+        if temp_video and os.path.exists(temp_video):
+            try:
+                os.remove(temp_video)
+                logger.info(f"Cleaned up temp video: {temp_video}")
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up temp video: {cleanup_err}")
+        
+        if temp_audio and os.path.exists(temp_audio):
+            try:
+                os.remove(temp_audio)
+                logger.info(f"Cleaned up temp audio: {temp_audio}")
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up temp audio: {cleanup_err}")

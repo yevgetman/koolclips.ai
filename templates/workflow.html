@@ -410,6 +410,47 @@
         return await response.json();
     }
 
+    // Poll for async audio extraction completion
+    async function pollExtractionStatus(taskId) {
+        const maxAttempts = 120;  // 10 minutes max (5s intervals)
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(`/api/upload/extract-audio/status/${taskId}/`, {
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await safeJsonParse(response, 'extraction status');
+                
+                if (data.status === 'completed') {
+                    return data;
+                } else if (data.status === 'failed') {
+                    throw new Error(data.error || 'Audio extraction failed');
+                }
+                
+                // Update UI with progress
+                const statusEl = document.getElementById('extraction-status');
+                if (statusEl && data.message) {
+                    statusEl.textContent = data.message;
+                }
+                
+                // Wait before next poll
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                attempts++;
+                
+            } catch (error) {
+                if (error.message.includes('Session expired') || error.message.includes('failed')) {
+                    throw error;
+                }
+                console.error('Error polling extraction status:', error);
+                attempts++;
+            }
+        }
+        
+        throw new Error('Audio extraction timed out. Please try again.');
+    }
+
     // Calculate optimal part size (matching backend logic)
     function calculatePartSize(fileSize) {
         const MIN_PART_SIZE = 5 * 1024 * 1024;      // 5MB minimum (S3 requirement)
@@ -598,9 +639,10 @@
             if (!isAudioOnly) {
                 // Show extraction progress
                 document.getElementById('audio-extraction-section').classList.remove('hidden');
-                document.getElementById('extraction-status').textContent = 'Extracting audio from video (this may take a few minutes)...';
+                document.getElementById('extraction-status').textContent = 'Starting audio extraction...';
                 
                 try {
+                    // Start async extraction task
                     const extractResponse = await fetch('/api/upload/extract-audio/', {
                         method: 'POST',
                         headers: getAuthHeaders(),
@@ -612,11 +654,20 @@
 
                     const extractData = await safeJsonParse(extractResponse, 'audio extraction');
                     if (!extractData.success) {
-                        throw new Error(extractData.error || 'Audio extraction failed');
+                        throw new Error(extractData.error || 'Failed to start audio extraction');
                     }
 
-                    uploadedVideoUrl = publicUrl;
-                    uploadedAudioUrl = extractData.extracted_audio_url;
+                    // Check if async or immediate response
+                    if (extractData.async && extractData.task_id) {
+                        // Poll for completion
+                        const extractionResult = await pollExtractionStatus(extractData.task_id);
+                        uploadedVideoUrl = publicUrl;
+                        uploadedAudioUrl = extractionResult.extracted_audio_url;
+                    } else {
+                        // Immediate response (audio file, no extraction needed)
+                        uploadedVideoUrl = publicUrl;
+                        uploadedAudioUrl = extractData.extracted_audio_url;
+                    }
                     
                     document.getElementById('extraction-status').textContent = 'Audio extracted successfully!';
                     
