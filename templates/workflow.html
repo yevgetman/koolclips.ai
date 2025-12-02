@@ -451,6 +451,10 @@
     function uploadWithProgress(url, blob, onProgress) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
+            
+            // Timeout: 5 minutes per part (300 seconds)
+            xhr.timeout = 300000;
+            
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
                     onProgress(Math.round((e.loaded / e.total) * 100));
@@ -464,6 +468,8 @@
                 }
             });
             xhr.addEventListener('error', () => reject(new Error('Network error')));
+            xhr.addEventListener('timeout', () => reject(new Error('Upload timed out')));
+            xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
             xhr.open('PUT', url);
             xhr.send(blob);
         });
@@ -517,20 +523,20 @@
             uploadState.jobId = initData.job_id;
             uploadState.totalParts = initData.num_parts;
 
-            // Step 2: Upload all parts with concurrency
+            // Step 2: Upload all parts with concurrency and retry logic
             updateUploadProgress(5, `Uploading ${uploadState.totalParts} parts...`);
             
-            const concurrency = 6;
+            const concurrency = 4; // Reduced for better stability
+            const maxRetries = 3;
             const partNumbers = Array.from({length: uploadState.totalParts}, (_, i) => i + 1);
             let index = 0;
 
-            async function uploadNextPart() {
-                while (index < partNumbers.length) {
-                    const partNumber = partNumbers[index++];
-                    const start = (partNumber - 1) * partSize;
-                    const end = Math.min(start + partSize, selectedFile.size);
-                    const blob = selectedFile.slice(start, end);
+            async function uploadPartWithRetry(partNumber, retryCount = 0) {
+                const start = (partNumber - 1) * partSize;
+                const end = Math.min(start + partSize, selectedFile.size);
+                const blob = selectedFile.slice(start, end);
 
+                try {
                     // Get presigned URL for this part
                     const urlResponse = await fetch('/api/upload/multipart/urls/', {
                         method: 'POST',
@@ -555,9 +561,25 @@
                         updateUploadProgress(overall, `Uploading part ${uploadState.uploadedParts + 1} of ${uploadState.totalParts}...`);
                     });
 
-                    uploadState.parts.push({ PartNumber: partNumber, ETag: etag });
+                    return { PartNumber: partNumber, ETag: etag, size: blob.size };
+                } catch (error) {
+                    if (retryCount < maxRetries) {
+                        console.log(`Retrying part ${partNumber} (attempt ${retryCount + 2}/${maxRetries + 1})...`);
+                        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+                        await new Promise(r => setTimeout(r, delay));
+                        return uploadPartWithRetry(partNumber, retryCount + 1);
+                    }
+                    throw new Error(`Failed to upload part ${partNumber} after ${maxRetries + 1} attempts: ${error.message}`);
+                }
+            }
+
+            async function uploadNextPart() {
+                while (index < partNumbers.length) {
+                    const partNumber = partNumbers[index++];
+                    const result = await uploadPartWithRetry(partNumber);
+                    uploadState.parts.push({ PartNumber: result.PartNumber, ETag: result.ETag });
                     uploadState.uploadedParts++;
-                    uploadState.uploadedBytes += blob.size;
+                    uploadState.uploadedBytes += result.size;
                 }
             }
 
