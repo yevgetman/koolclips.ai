@@ -283,6 +283,12 @@
                 })
             });
             
+            // Check for auth errors
+            if (response.status === 401 || response.status === 403) {
+                logEvent('Authentication required - please log in again', 'error');
+                throw new Error('Session expired. Please log in again.');
+            }
+            
             const data = await response.json();
             
             if (!data.success) {
@@ -546,5 +552,25 @@
     logEvent('Uppy + S3 Multipart initialized', 'success');
     logEvent('Direct S3 upload with 6 parallel chunks', 'info');
     logEvent(`Max file size: ${formatBytes(20 * 1024 * 1024 * 1024)}`, 'info');
+    
+    // Check authentication status
+    const token = getAuthToken();
+    if (!token) {
+        logEvent('⚠️ No auth token found - you may need to log in', 'warning');
+    } else {
+        // Verify token is still valid
+        fetch('/api/auth/verify/', {
+            method: 'POST',
+            headers: getAuthHeaders()
+        }).then(response => {
+            if (response.status === 401 || response.status === 403) {
+                logEvent('⚠️ Session expired - please log in again', 'warning');
+            } else {
+                logEvent('✓ Authenticated', 'success');
+            }
+        }).catch(() => {
+            logEvent('Could not verify auth status', 'warning');
+        });
+    }
 </script>
 {% endblock %}
