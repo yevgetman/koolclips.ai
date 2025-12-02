@@ -60,3 +60,9 @@ def test_stage4_clipping(request):
 def workflow_page(request):
     """Production workflow page - combines all stages"""
     return render(request, 'workflow.html')
+
+
+@login_required
+def test_stage1_tus_upload(request):
+    """Test page for Stage 1: TUS resumable upload (Uppy + TUS)"""
+    return render(request, 'test/stage1_tus_upload.html')

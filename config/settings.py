@@ -281,3 +281,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/profile/'
 LOGOUT_REDIRECT_URL = '/'
+
+# TUS Resumable Upload Settings
+TUS_UPLOAD_DIR = os.path.join(BASE_DIR, 'tus-uploads')
+TUS_MAX_SIZE = 20 * 1024 * 1024 * 1024  # 20GB
+
+# Django Upload Size Limits (for TUS chunked uploads)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB per chunk
+FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB

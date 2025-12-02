@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}Test Stage 1: TUS Upload - Viral Clips{% endblock %}
+
+{% block extra_head %}
+<!-- Uppy CSS -->
+<link href="https://releases.transloadit.com/uppy/v3.27.0/uppy.min.css" rel="stylesheet">
+<style>
+    /* Custom Uppy theme overrides for dark mode */
+    .uppy-Dashboard {
+        background-color: #1f2937 !important;
+    }
+    .uppy-Dashboard-inner {
+        background-color: #1f2937 !important;
+        border-color: #374151 !important;
+    }
+    .uppy-Dashboard-innerWrap {
+        background-color: #1f2937 !important;
+    }
+    .uppy-Dashboard-AddFiles {
+        border-color: #4b5563 !important;
+    }
+    .uppy-Dashboard-AddFiles-title {
+        color: #e5e7eb !important;
+    }
+    .uppy-Dashboard-note {
+        color: #9ca3af !important;
+    }
+    .uppy-DashboardTab-name {
+        color: #d1d5db !important;
+    }
+    .uppy-Dashboard-Item {
+        background-color: #374151 !important;
+        border-color: #4b5563 !important;
+    }
+    .uppy-Dashboard-Item-name {
+        color: #f3f4f6 !important;
+    }
+    .uppy-Dashboard-Item-statusSize {
+        color: #9ca3af !important;
+    }
+    .uppy-StatusBar {
+        background-color: #374151 !important;
+    }
+    .uppy-StatusBar-content {
+        color: #e5e7eb !important;
+    }
+    .uppy-StatusBar-statusPrimary {
+        color: #e5e7eb !important;
+    }
+    .uppy-StatusBar-statusSecondary {
+        color: #9ca3af !important;
+    }
+    .uppy-StatusBar-actionBtn--upload {
+        background-color: #7c3aed !important;
+    }
+    .uppy-StatusBar-actionBtn--upload:hover {
+        background-color: #6d28d9 !important;
+    }
+    .uppy-DashboardContent-bar {
+        background-color: #374151 !important;
+        border-color: #4b5563 !important;
+    }
+    .uppy-DashboardContent-title {
+        color: #e5e7eb !important;
+    }
+    .uppy-Dashboard-browse {
+        color: #a78bfa !important;
+    }
+    .uppy-Dashboard-dropFilesHereHint {
+        color: #9ca3af !important;
+        border-color: #4b5563 !important;
+    }
+    /* Progress bar colors */
+    .uppy-StatusBar-progress {
+        background-color: #7c3aed !important;
+    }
+    .uppy-StatusBar.is-complete .uppy-StatusBar-progress {
+        background-color: #10b981 !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">🧪 Stage 1 Test: TUS Resumable Upload</h1>
+            <p class="text-gray-400">Test Uppy + TUS protocol for resumable large file uploads.</p>
+            <div class="mt-4 bg-purple-900/20 border border-purple-700/50 rounded-lg p-4">
+                <p class="text-purple-300 text-sm">
+                    <strong>TUS Protocol Benefits:</strong> Resumable uploads • Network resilience • Pause/Resume • Automatic retry • Progress tracking
+                </p>
+            </div>
+        </div>
+
+        <!-- Compare with Current Implementation -->
+        <div class="mb-8 bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h2 class="text-lg font-semibold text-white mb-4">📊 Current vs TUS Implementation</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-gray-700/50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-gray-300 mb-2">Current (S3 Multipart)</h3>
+                    <ul class="text-xs text-gray-400 space-y-1">
+                        <li>✓ Direct S3 upload via presigned URLs</li>
+                        <li>✓ Parallel chunk uploads</li>
+                        <li>✗ No resume on page reload</li>
+                        <li>✗ Custom retry logic needed</li>
+                        <li>✗ Basic progress UI</li>
+                    </ul>
+                </div>
+                <div class="bg-purple-900/30 rounded-lg p-4 border border-purple-700/30">
+                    <h3 class="text-sm font-medium text-purple-300 mb-2">TUS Protocol</h3>
+                    <ul class="text-xs text-purple-200 space-y-1">
+                        <li>✓ True resumable uploads</li>
+                        <li>✓ Survives page reload/close</li>
+                        <li>✓ Built-in retry & backoff</li>
+                        <li>✓ Pause/Resume controls</li>
+                        <li>✓ Rich Uppy UI</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Uppy Dashboard -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
+            <h2 class="text-xl font-semibold text-white mb-4">Upload with Uppy + TUS</h2>
+            <div id="uppy-dashboard"></div>
+        </div>
+
+        <!-- Upload Status/Events Log -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-white">Upload Events</h2>
+                <button id="clear-log" class="text-sm text-gray-400 hover:text-white">Clear</button>
+            </div>
+            <div id="event-log" class="bg-gray-900 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+                <div class="text-gray-500">Waiting for upload events...</div>
+            </div>
+        </div>
+
+        <!-- Upload Result -->
+        <div id="result-section" class="hidden">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-8 border border-gray-700">
+                <h2 class="text-xl font-semibold text-white mb-6">Upload Complete</h2>
+                <div id="result-content" class="space-y-4">
+                    <!-- Results will be populated here -->
+                </div>
+                
+                <!-- Next Step -->
+                <div class="mt-8 pt-6 border-t border-gray-700">
+                    <h3 class="text-lg font-medium text-white mb-4">Next Steps</h3>
+                    <div class="flex space-x-4">
+                        <button id="extract-audio-btn" class="hidden bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-500 transition-colors">
+                            Extract Audio (Video Only)
+                        </button>
+                        <a href="{% url 'test-stage2' %}" class="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-500 transition-colors inline-block">
+                            Continue to Stage 2 →
+                        </a>
+                        <button id="new-upload-btn" class="bg-gray-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-500 transition-colors">
+                            New Upload
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Back link -->
+        <div class="mt-8 text-center">
+            <a href="{% url 'test-stage1' %}" class="text-primary-400 hover:text-primary-300">
+                ← Back to S3 Multipart Upload
+            </a>
+            <span class="text-gray-600 mx-4">|</span>
+            <a href="{% url 'home' %}" class="text-gray-400 hover:text-gray-300">
+                Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Uppy JS -->
+<script src="https://releases.transloadit.com/uppy/v3.27.0/uppy.min.js"></script>
+
+<script>
+    // Get auth token
+    function getAuthToken() {
+        return localStorage.getItem('auth_token');
+    }
+
+    // Event logger
+    const eventLog = document.getElementById('event-log');
+    function logEvent(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        const colors = {
+            info: 'text-blue-400',
+            success: 'text-green-400',
+            error: 'text-red-400',
+            warning: 'text-yellow-400',
+            progress: 'text-purple-400'
+        };
+        const entry = document.createElement('div');
+        entry.className = `${colors[type] || 'text-gray-400'} mb-1`;
+        entry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+        
+        // Remove "waiting" message if present
+        const waiting = eventLog.querySelector('.text-gray-500');
+        if (waiting && waiting.textContent.includes('Waiting')) {
+            waiting.remove();
+        }
+        
+        eventLog.appendChild(entry);
+        eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    document.getElementById('clear-log').addEventListener('click', () => {
+        eventLog.innerHTML = '<div class="text-gray-500">Waiting for upload events...</div>';
+    });
+
+    // Format bytes
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Store upload results
+    let uploadResults = [];
+
+    // Initialize Uppy
+    const uppy = new Uppy.Uppy({
+        id: 'uppy-tus',
+        autoProceed: false,
+        allowMultipleUploadBatches: true,
+        restrictions: {
+            maxFileSize: 20 * 1024 * 1024 * 1024, // 20GB
+            allowedFileTypes: ['video/*', 'audio/*'],
+            maxNumberOfFiles: 5
+        },
+        meta: {
+            // Add auth token to metadata
+            authToken: getAuthToken()
+        }
+    });
+
+    // Add Dashboard plugin
+    uppy.use(Uppy.Dashboard, {
+        target: '#uppy-dashboard',
+        inline: true,
+        height: 400,
+        width: '100%',
+        showProgressDetails: true,
+        showRemoveButtonAfterComplete: true,
+        note: 'Video or audio files up to 20GB. Supports resume on network failure.',
+        proudlyDisplayPoweredByUppy: false,
+        theme: 'dark',
+        locale: {
+            strings: {
+                dropPasteFiles: 'Drop files here or %{browseFiles}',
+                browseFiles: 'browse files'
+            }
+        }
+    });
+
+    // Add TUS plugin for resumable uploads
+    uppy.use(Uppy.Tus, {
+        endpoint: '/api/tus/',
+        retryDelays: [0, 1000, 3000, 5000, 10000], // Retry delays in ms
+        chunkSize: 50 * 1024 * 1024, // 50MB chunks
+        removeFingerprintOnSuccess: true, // Clean up after successful upload
+        headers: () => ({
+            'Authorization': `Bearer ${getAuthToken()}`
+        }),
+        onBeforeRequest: (req, file) => {
+            logEvent(`Preparing request for ${file.name}`, 'info');
+        },
+        onAfterResponse: (req, res) => {
+            // Log TUS-specific headers
+            const uploadOffset = res.getHeader('Upload-Offset');
+            if (uploadOffset) {
+                logEvent(`Server confirmed offset: ${formatBytes(parseInt(uploadOffset))}`, 'progress');
+            }
+        },
+        onShouldRetry: (err, retryAttempt, options, next) => {
+            logEvent(`Retry attempt ${retryAttempt}: ${err.message}`, 'warning');
+            return next(err);
+        }
+    });
+
+    // Event handlers
+    uppy.on('file-added', (file) => {
+        logEvent(`File added: ${file.name} (${formatBytes(file.size)})`, 'info');
+    });
+
+    uppy.on('file-removed', (file, reason) => {
+        logEvent(`File removed: ${file.name} (${reason})`, 'warning');
+    });
+
+    uppy.on('upload', (data) => {
+        logEvent(`Upload started for ${data.fileIDs.length} file(s)`, 'info');
+    });
+
+    uppy.on('upload-progress', (file, progress) => {
+        const percent = ((progress.bytesUploaded / progress.bytesTotal) * 100).toFixed(1);
+        // Only log at 10% intervals to avoid spam
+        if (Math.floor(percent) % 10 === 0 && !file._lastLoggedPercent || file._lastLoggedPercent !== Math.floor(percent)) {
+            file._lastLoggedPercent = Math.floor(percent);
+            logEvent(`${file.name}: ${percent}% (${formatBytes(progress.bytesUploaded)} / ${formatBytes(progress.bytesTotal)})`, 'progress');
+        }
+    });
+
+    uppy.on('upload-success', (file, response) => {
+        logEvent(`✓ Upload complete: ${file.name}`, 'success');
+        console.log('Upload response:', response);
+        
+        // Store result
+        uploadResults.push({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            uploadURL: response.uploadURL,
+            tusId: response.uploadURL ? response.uploadURL.split('/').pop() : null
+        });
+    });
+
+    uppy.on('upload-error', (file, error, response) => {
+        logEvent(`✗ Upload failed: ${file.name} - ${error.message}`, 'error');
+        console.error('Upload error:', error, response);
+    });
+
+    uppy.on('complete', (result) => {
+        logEvent(`All uploads complete: ${result.successful.length} succeeded, ${result.failed.length} failed`, 
+                 result.failed.length > 0 ? 'warning' : 'success');
+        
+        if (result.successful.length > 0) {
+            showResults(result.successful);
+        }
+    });
+
+    uppy.on('upload-retry', (fileID) => {
+        const file = uppy.getFile(fileID);
+        logEvent(`Retrying upload: ${file.name}`, 'warning');
+    });
+
+    uppy.on('retry-all', () => {
+        logEvent('Retrying all failed uploads...', 'warning');
+    });
+
+    uppy.on('pause-all', () => {
+        logEvent('All uploads paused', 'warning');
+    });
+
+    uppy.on('resume-all', () => {
+        logEvent('All uploads resumed', 'info');
+    });
+
+    uppy.on('restriction-failed', (file, error) => {
+        logEvent(`Restriction failed for ${file ? file.name : 'file'}: ${error.message}`, 'error');
+    });
+
+    // Show results
+    function showResults(successfulUploads) {
+        const resultSection = document.getElementById('result-section');
+        const resultContent = document.getElementById('result-content');
+        
+        resultContent.innerHTML = successfulUploads.map((file, index) => {
+            const result = uploadResults[index] || {};
+            const isVideo = file.type && file.type.startsWith('video/');
+            
+            return `
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center space-x-3">
+                            <svg class="h-8 w-8 ${isVideo ? 'text-purple-400' : 'text-green-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                ${isVideo ? 
+                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />' :
+                                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />'
+                                }
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium text-white">${file.name}</p>
+                                <p class="text-xs text-gray-400">${formatBytes(file.size)} • ${file.type || 'unknown'}</p>
+                            </div>
+                        </div>
+                        <span class="text-green-400 text-sm">✓ Uploaded</span>
+                    </div>
+                    ${result.tusId ? `
+                        <div class="mt-3 pt-3 border-t border-gray-600">
+                            <p class="text-xs text-gray-400">TUS ID: <code class="text-purple-400">${result.tusId}</code></p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+        
+        // Show extract audio button if any video was uploaded
+        const hasVideo = successfulUploads.some(f => f.type && f.type.startsWith('video/'));
+        if (hasVideo) {
+            document.getElementById('extract-audio-btn').classList.remove('hidden');
+        }
+        
+        resultSection.classList.remove('hidden');
+        resultSection.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // New upload button
+    document.getElementById('new-upload-btn').addEventListener('click', () => {
+        uploadResults = [];
+        uppy.cancelAll();
+        document.getElementById('result-section').classList.add('hidden');
+        document.getElementById('extract-audio-btn').classList.add('hidden');
+        eventLog.innerHTML = '<div class="text-gray-500">Waiting for upload events...</div>';
+    });
+
+    // Log initialization
+    logEvent('Uppy + TUS initialized', 'success');
+    logEvent(`Endpoint: /api/tus/`, 'info');
+    logEvent(`Chunk size: ${formatBytes(50 * 1024 * 1024)}`, 'info');
+    logEvent(`Max file size: ${formatBytes(20 * 1024 * 1024 * 1024)}`, 'info');
+</script>
+{% endblock %}

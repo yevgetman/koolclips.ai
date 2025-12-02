@@ -14,6 +14,16 @@
                     <strong>Stage 1 Pipeline:</strong> Upload → Store in S3 → Extract Audio (if video) → Store Audio in S3
                 </p>
             </div>
+            <!-- TUS Alternative Link -->
+            <div class="mt-4 bg-purple-900/20 border border-purple-700/50 rounded-lg p-4">
+                <p class="text-purple-300 text-sm">
+                    <strong>Try TUS Resumable Uploads:</strong> 
+                    <a href="{% url 'test-stage1-tus' %}" class="text-purple-400 hover:text-purple-300 underline">
+                        Test Uppy + TUS →
+                    </a>
+                    <span class="text-purple-400/70"> (pause/resume, survives page reload)</span>
+                </p>
+            </div>
         </div>
 
         <!-- Upload Section -->
