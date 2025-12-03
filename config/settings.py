@@ -242,6 +242,35 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
+# Django Cache Configuration (use Redis for cross-dyno cache sharing)
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+if REDIS_URL:
+    # Handle Heroku Redis SSL (rediss://)
+    if REDIS_URL.startswith('rediss://'):
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+                'LOCATION': REDIS_URL,
+                'OPTIONS': {
+                    'ssl_cert_reqs': None,  # Disable SSL cert verification for Heroku Redis
+                }
+            }
+        }
+    else:
+        CACHES = {
+            'default': {
+                'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+                'LOCATION': REDIS_URL,
+            }
+        }
+else:
+    # Fallback to local memory cache for development
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
+
 # REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
