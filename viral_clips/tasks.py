@@ -865,3 +865,177 @@ def extract_audio_async(self, task_id: str, s3_key: str, job_id: str = None):
                 logger.info(f"Cleaned up temp audio: {temp_audio}")
             except Exception as cleanup_err:
                 logger.warning(f"Failed to clean up temp audio: {cleanup_err}")
+
+
+@shared_task(bind=True, max_retries=2)
+def transcribe_audio_async(self, task_id: str, audio_url: str, job_id: str = None):
+    """
+    Async task to transcribe audio using ElevenLabs API.
+    
+    This task:
+    1. Downloads audio from URL
+    2. Sends to ElevenLabs for transcription
+    3. Uploads transcript JSON to S3
+    4. Updates progress in cache for polling
+    
+    Args:
+        task_id: Unique task ID for progress tracking
+        audio_url: URL of the audio file to transcribe
+        job_id: Optional job ID for organizing files
+    """
+    import time
+    import tempfile
+    import requests
+    from datetime import datetime
+    
+    cache_key = f"transcription_{task_id}"
+    temp_audio = None
+    
+    def update_progress(stage: str, percent: int, message: str):
+        """Update progress in cache"""
+        cache.set(cache_key, {
+            'status': 'processing',
+            'stage': stage,
+            'percent': percent,
+            'message': message
+        }, timeout=3600)
+    
+    try:
+        start_time = time.time()
+        logger.info(f"Starting async transcription for task {task_id}: {audio_url}")
+        
+        # Initialize progress
+        update_progress('starting', 0, 'Starting transcription...')
+        
+        # Download audio file
+        update_progress('downloading', 10, 'Downloading audio file...')
+        logger.info(f"Downloading audio from: {audio_url}")
+        
+        try:
+            response = requests.get(audio_url, stream=True, timeout=300)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f'Failed to download audio file: {str(e)}')
+        
+        # Determine file extension
+        content_type = response.headers.get('Content-Type', '')
+        if 'audio/mpeg' in content_type or audio_url.endswith('.mp3'):
+            ext = '.mp3'
+        elif 'audio/wav' in content_type or audio_url.endswith('.wav'):
+            ext = '.wav'
+        elif 'audio/mp4' in content_type or audio_url.endswith('.m4a'):
+            ext = '.m4a'
+        else:
+            ext = '.mp3'
+        
+        # Save to temp file
+        fd, temp_audio = tempfile.mkstemp(suffix=ext)
+        os.close(fd)
+        
+        with open(temp_audio, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        logger.info(f"Audio downloaded to: {temp_audio}")
+        
+        # Transcribe using ElevenLabs
+        update_progress('transcribing', 30, 'Transcribing with ElevenLabs (this may take a few minutes)...')
+        logger.info(f"Sending to ElevenLabs for transcription...")
+        
+        elevenlabs = ElevenLabsService()
+        transcript_data = elevenlabs.transcribe_video(temp_audio)
+        
+        logger.info(f"Transcription complete, uploading to S3...")
+        update_progress('uploading', 80, 'Uploading transcript to S3...')
+        
+        # Prepare transcript JSON
+        folder_id = job_id or str(uuid.uuid4())
+        transcript_json = {
+            'job_id': folder_id,
+            'audio_url': audio_url,
+            'transcript': transcript_data,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Upload transcript to S3
+        if S3Service.is_s3_configured():
+            s3_service = S3Service()
+            transcript_s3_key = f"uploads/{folder_id}/transcript.json"
+            
+            fd, temp_transcript = tempfile.mkstemp(suffix='.json')
+            os.close(fd)
+            
+            try:
+                import json
+                with open(temp_transcript, 'w') as f:
+                    json.dump(transcript_json, f, indent=2)
+                
+                transcript_urls = s3_service.upload_file(
+                    temp_transcript,
+                    transcript_s3_key,
+                    content_type='application/json'
+                )
+                transcript_url = transcript_urls.get('cloudfront_url') or transcript_urls['s3_url']
+            finally:
+                if os.path.exists(temp_transcript):
+                    os.remove(temp_transcript)
+        else:
+            transcript_url = None
+        
+        # Calculate stats
+        processing_time = round(time.time() - start_time, 2)
+        transcript_text = transcript_data.get('text', '')
+        word_count = len(transcript_text.split()) if transcript_text else 0
+        duration = transcript_data.get('duration', 0)
+        language = transcript_data.get('language_code', 'en')
+        
+        logger.info(f"Transcription complete in {processing_time}s")
+        
+        # Store completed result in cache
+        cache.set(cache_key, {
+            'status': 'completed',
+            'stage': 'complete',
+            'percent': 100,
+            'message': 'Transcription complete',
+            'job_id': folder_id,
+            'audio_url': audio_url,
+            'transcript_url': transcript_url,
+            'transcript_text': transcript_text,
+            'transcript_data': transcript_data,
+            'duration': duration,
+            'language': language,
+            'word_count': word_count,
+            'processing_time': processing_time
+        }, timeout=3600)
+        
+        return {
+            'success': True,
+            'transcript_url': transcript_url,
+            'processing_time': processing_time
+        }
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Transcription failed for task {task_id}: {error_message}")
+        
+        # Store error in cache
+        cache.set(cache_key, {
+            'status': 'failed',
+            'error': error_message
+        }, timeout=3600)
+        
+        # Retry for transient errors
+        if self.request.retries < self.max_retries:
+            if 'timeout' in error_message.lower() or 'connection' in error_message.lower():
+                raise self.retry(exc=e, countdown=30)
+        
+        raise
+        
+    finally:
+        # Clean up temp file
+        if temp_audio and os.path.exists(temp_audio):
+            try:
+                os.remove(temp_audio)
+                logger.info(f"Cleaned up temp audio: {temp_audio}")
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up temp audio: {cleanup_err}")

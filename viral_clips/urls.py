@@ -7,8 +7,9 @@ from .views import (
     complete_multipart_upload, abort_multipart_upload, proxy_upload_chunk,
     import_from_url, get_import_status,
     bulk_cleanup_cloudcube, cleanup_all_clips, extract_audio_from_video,
-    extract_audio_status, transcribe_audio, analyze_segments, create_clip,
-    get_clip_status, process_workflow, get_workflow_status
+    extract_audio_status, transcribe_audio, transcribe_audio_status,
+    analyze_segments, create_clip, get_clip_status, process_workflow,
+    get_workflow_status
 )
 
 router = DefaultRouter()
@@ -36,8 +37,9 @@ urlpatterns = [
     # Audio extraction (Stage 1 preprocessing) - async with status polling
     path('upload/extract-audio/', extract_audio_from_video, name='extract-audio-from-video'),
     path('upload/extract-audio/status/<str:task_id>/', extract_audio_status, name='extract-audio-status'),
-    # Transcription (Stage 2)
+    # Transcription (Stage 2) - async with status polling
     path('transcribe/', transcribe_audio, name='transcribe-audio'),
+    path('transcribe/status/<str:task_id>/', transcribe_audio_status, name='transcribe-audio-status'),
     # Segment analysis (Stage 3)
     path('analyze-segments/', analyze_segments, name='analyze-segments'),
     # Clip creation (Stage 4)

@@ -451,6 +451,46 @@
         throw new Error('Audio extraction timed out. Please try again.');
     }
 
+    // Poll for async transcription completion
+    async function pollTranscriptionStatus(taskId) {
+        const maxAttempts = 180;  // 15 minutes max (5s intervals)
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(`/api/transcribe/status/${taskId}/`, {
+                    headers: getAuthHeaders()
+                });
+                
+                const data = await safeJsonParse(response, 'transcription status');
+                
+                if (data.status === 'completed') {
+                    return data;
+                } else if (data.status === 'failed') {
+                    throw new Error(data.error || 'Transcription failed');
+                }
+                
+                // Update UI with progress
+                if (data.message) {
+                    updateStageUI(2, data.message, 10 + (data.percent || 0) * 0.2);
+                }
+                
+                // Wait before next poll
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                attempts++;
+                
+            } catch (error) {
+                if (error.message.includes('Session expired') || error.message.includes('failed')) {
+                    throw error;
+                }
+                console.error('Error polling transcription status:', error);
+                attempts++;
+            }
+        }
+        
+        throw new Error('Transcription timed out. Please try again.');
+    }
+
     // Calculate optimal part size (matching backend logic)
     function calculatePartSize(fileSize) {
         const MIN_PART_SIZE = 5 * 1024 * 1024;      // 5MB minimum (S3 requirement)
@@ -767,8 +807,8 @@
 
         try {
             // ============ STAGE 2: TRANSCRIPTION ============
-            // Same as test page - call /api/transcribe/
-            updateStageUI(2, 'Sending audio to ElevenLabs...', 10);
+            // Start async transcription task
+            updateStageUI(2, 'Starting transcription...', 10);
             
             const transcribeResponse = await fetch('/api/transcribe/', {
                 method: 'POST',
@@ -778,12 +818,21 @@
                 })
             });
 
-            const transcribeResult = await safeJsonParse(transcribeResponse, 'transcription');
-            if (!transcribeResult.success) {
-                throw new Error(transcribeResult.error || 'Transcription failed');
+            const transcribeStart = await safeJsonParse(transcribeResponse, 'transcription');
+            if (!transcribeStart.success) {
+                throw new Error(transcribeStart.error || 'Failed to start transcription');
             }
 
-            const transcriptUrl = transcribeResult.transcript_url;
+            // Poll for transcription completion
+            let transcriptUrl;
+            if (transcribeStart.async && transcribeStart.task_id) {
+                const transcribeResult = await pollTranscriptionStatus(transcribeStart.task_id);
+                transcriptUrl = transcribeResult.transcript_url;
+            } else {
+                // Immediate response (shouldn't happen with async, but just in case)
+                transcriptUrl = transcribeStart.transcript_url;
+            }
+            
             updateStageUI(2, 'Transcription complete!', 30);
             markStageComplete(2);
 
